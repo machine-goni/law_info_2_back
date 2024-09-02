@@ -1,0 +1,15 @@
+__pycache__/
+csvs/
+documents/
+images/
+paperwork/
+procedural_guide/
+questions_about_legal_issues/
+.env
+05-Pinecone.ipynb
+11-Korean-Tokenizer-Tutorial.ipynb
+ask_questions_rerank.py
+CSVLoader_old.py
+CSVLoader.py
+langchain_test.py
+streamlit_app.py
