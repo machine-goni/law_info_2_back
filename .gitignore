@@ -11,5 +11,6 @@ questions_about_legal_issues/
 ask_questions_rerank.py
 CSVLoader_old.py
 CSVLoader.py
+git_command_after_install.txt
 langchain_test.py
 streamlit_app.py
