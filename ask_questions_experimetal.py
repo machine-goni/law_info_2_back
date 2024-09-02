@@ -1,5 +1,13 @@
 # pip freeze > requirements.txt
 # 위 명령어로 requirements.txt 를 뽑을 수 있다
+# requirements.txt 를 사용해 일괄 설치하려면 아래명령어.
+# pip install -r requirements.txt
+# 만약 패키지간 호환성 문제로 에러가 날때 제안되는 방법은 2가지 이다.
+'''
+To fix this you could try to:
+1. 지정한 패키지 버전의 범위를 느슨하게 합니다.
+2. pip가 종속성 충돌을 해결하려고 시도할 수 있도록 패키지 버전을 제거하세요.
+'''
 
 
 import os
