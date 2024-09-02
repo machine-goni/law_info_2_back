@@ -68,6 +68,7 @@ class AskQuestions:
     
     def __init__(self):
         load_dotenv()
+        print(f"AskQuestions __init__: !!!!!!!!!!!!!!!!!!!!!!!!1")
         os.environ['OPENAI_API_KEY'] = os.getenv("openai_api_key")
         os.environ['PINECONE_API_KEY'] = os.getenv("pinecone_api_key")
         os.environ["TAVILY_API_KEY"] = os.getenv("tavily_api_key")
@@ -75,7 +76,7 @@ class AskQuestions:
         self.index_go_kr_key = os.getenv("index_go_kr_key")
         
         #test
-        print(f"test key: {os.getenv("test_key")}")
+        print(f"test key: {os.getenv('test_key')}")
         
         # embedding model instance 생성
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
