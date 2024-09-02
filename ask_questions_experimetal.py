@@ -8,6 +8,8 @@ To fix this you could try to:
 1. 지정한 패키지 버전의 범위를 느슨하게 합니다.
 2. pip가 종속성 충돌을 해결하려고 시도할 수 있도록 패키지 버전을 제거하세요.
 '''
+# requirements.txt 를 사용해 일괄 삭제하려면 아래명령어.
+# pip uninstall -r requirements.txt -y
 
 
 import os
