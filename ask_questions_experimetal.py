@@ -74,6 +74,9 @@ class AskQuestions:
         os.environ["LANGCHAIN_API_KEY"] = os.getenv("langchain_api_key")
         self.index_go_kr_key = os.getenv("index_go_kr_key")
         
+        #test
+        print(f"test key: {os.getenv("test_key")}")
+        
         # embedding model instance 생성
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
         # vector store. 이미 문서를 임베딩해서 vector store 에 넣었다면 끌어다 쓰면 된다.
