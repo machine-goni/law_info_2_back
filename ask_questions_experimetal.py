@@ -29,14 +29,14 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.documents.base import Document
 # BM25
-#from langchain_community.retrievers import BM25Retriever
+from langchain_community.retrievers import BM25Retriever
 # BM25 (커스텀 구현한 한국어 형태소 분석기 적용). 아래 3가지 중에 어떤게 가장 성능이 좋은지는 확인을 해봐야 알겠지만,
 # 여기서는 kkma 를 사용한다.
-from langchain_teddynote.retrievers import (
+#from langchain_teddynote.retrievers import (
     #KiwiBM25Retriever,  # Kiwi + BM25
-    KkmaBM25Retriever,  # KonlPy(Kkma) + BM25
+#    KkmaBM25Retriever,  # KonlPy(Kkma) + BM25
     #OktBM25Retriever    # KonlPy(Okt) + BM25
-)
+#)
 # Ensemble Retriever
 #from langchain.retrievers import EnsembleRetriever
 # tavily search
@@ -117,17 +117,17 @@ class AskQuestions:
         # BM25(sparse retriever)
         # BM25 에서 검색할 문서는 pinecone 이 찾아낸 k개의 dense_retrieved_docs 를 base 로 한다.
         # 즉, k개의 같은 문서를 가지고 2가지의 retriever 가 각각 순위를 매긴다.
-        '''
+        ''''''
         bm25_retriever = BM25Retriever.from_documents(
             dense_retrieved_docs,
             #metadatas=[{"source": 1}] * len(doc_list_1),
         )
-        '''
+        
         # 위의 기본 BM25 를 사용하지 않고 kkma 한글 토크나이저가 적용된 BM25 사용
-        bm25_retriever = KkmaBM25Retriever.from_documents(
-            dense_retrieved_docs,
+        #bm25_retriever = KkmaBM25Retriever.from_documents(
+        #    dense_retrieved_docs,
             #metadatas=[{"source": 1}] * len(doc_list_1),
-        )
+        #)
         bm25_retriever.k = nearest_k
         bm25_retrieved_docs = bm25_retriever.invoke(state["question"])
         #print('bm25s choice:')
@@ -676,13 +676,24 @@ class AskQuestions:
             {"source": 15}
             ]
         '''
-        bm25_retriever = KkmaBM25Retriever.from_texts(
+        #bm25_retriever = KkmaBM25Retriever.from_texts(
+        bm25_retriever = BM25Retriever.from_texts(
             index_list,
             #metadatas = meatadatas
         )
         
-        bm25_retriever.k = 3 #len(index_list)
-        retrieved_result = bm25_retriever.search_with_score(context)
+        
+        
+        bm25_retriever.k = 1
+        retrieved_result = bm25_retriever.invoke(context)
+        print(f"bm25_retriever retrieved_result: {retrieved_result}")
+        
+        
+        
+        
+        
+        #bm25_retriever.k = 3 #len(index_list)
+        #retrieved_result = bm25_retriever.search_with_score(context)
         #pretty_print(retrieved_result)
         #print()
         #print(bm25_retriever.invoke(context))
@@ -693,10 +704,11 @@ class AskQuestions:
                 #print(f"find it!! {i}")
                 #print(urls)
                 # 0.5 이상이면 보여주자. 0.5 이하는 너무 관련이 없는것 같아서..
-                score = float(retrieved_result[0].metadata['score'])
-                cutoff_score = 0.01 #0.5
+                #score = float(retrieved_result[0].metadata['score'])
+                #cutoff_score = 0.01 #0.5
                 #print(f"score: {score}")
-                if urls != None and len(urls) > 0 and score >= cutoff_score:
+                #if urls != None and len(urls) > 0 and score >= cutoff_score:
+                if urls != None and len(urls) > 0:
                     return urls
                     
                 break
