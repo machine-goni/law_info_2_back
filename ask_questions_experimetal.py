@@ -30,6 +30,8 @@ from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.documents.base import Document
 # BM25
 from langchain_community.retrievers import BM25Retriever
+# 아래의 패키지를 사용하고 싶지만 아래의 패키지를 사용하려면 JVM 을 써야하고 그렇게 되면 로컬에서는 상관없지만
+# 클라우드에 올릴땐 docker 로 만들어서 올려야 한다. 그래서 그냥 langchain 걸 쓴다.
 # BM25 (커스텀 구현한 한국어 형태소 분석기 적용). 아래 3가지 중에 어떤게 가장 성능이 좋은지는 확인을 해봐야 알겠지만,
 # 여기서는 kkma 를 사용한다.
 #from langchain_teddynote.retrievers import (
@@ -68,15 +70,11 @@ class AskQuestions:
     
     def __init__(self):
         load_dotenv()
-        print(f"AskQuestions __init__: !!!!!!!!!!!!!!!!!!!!!!!!1")
         os.environ['OPENAI_API_KEY'] = os.getenv("openai_api_key")
         os.environ['PINECONE_API_KEY'] = os.getenv("pinecone_api_key")
         os.environ["TAVILY_API_KEY"] = os.getenv("tavily_api_key")
         os.environ["LANGCHAIN_API_KEY"] = os.getenv("langchain_api_key")
         self.index_go_kr_key = os.getenv("index_go_kr_key")
-        
-        #test
-        print(f"test key: {os.getenv('test_key')}")
         
         # embedding model instance 생성
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
@@ -117,12 +115,12 @@ class AskQuestions:
         # BM25(sparse retriever)
         # BM25 에서 검색할 문서는 pinecone 이 찾아낸 k개의 dense_retrieved_docs 를 base 로 한다.
         # 즉, k개의 같은 문서를 가지고 2가지의 retriever 가 각각 순위를 매긴다.
-        ''''''
         bm25_retriever = BM25Retriever.from_documents(
             dense_retrieved_docs,
             #metadatas=[{"source": 1}] * len(doc_list_1),
         )
         
+        # 위 패키지 임포트 부분에서 설명한 이유로 오리지날을 사용한다.
         # 위의 기본 BM25 를 사용하지 않고 kkma 한글 토크나이저가 적용된 BM25 사용
         #bm25_retriever = KkmaBM25Retriever.from_documents(
         #    dense_retrieved_docs,
@@ -676,42 +674,43 @@ class AskQuestions:
             {"source": 15}
             ]
         '''
-        #bm25_retriever = KkmaBM25Retriever.from_texts(
-        bm25_retriever = BM25Retriever.from_texts(
+        
+        bm25_retriever = BM25Retriever.from_texts(          # original
+        #bm25_retriever = KkmaBM25Retriever.from_texts(     # custom
             index_list,
             #metadatas = meatadatas
         )
         
-        
-        
+        # original
         bm25_retriever.k = 1
         retrieved_result = bm25_retriever.invoke(context)
-        print(f"bm25_retriever retrieved_result: {retrieved_result}")
-        
-        
-        
-        
-        
-        #bm25_retriever.k = 3 #len(index_list)
-        #retrieved_result = bm25_retriever.search_with_score(context)
-        #pretty_print(retrieved_result)
-        #print()
-        #print(bm25_retriever.invoke(context))
         
         for i, index_name in enumerate(index_list):
             if retrieved_result[0].page_content == index_name:
                 urls = get_index_url(self.index_go_kr_key, i)
-                #print(f"find it!! {i}")
-                #print(urls)
-                # 0.5 이상이면 보여주자. 0.5 이하는 너무 관련이 없는것 같아서..
-                #score = float(retrieved_result[0].metadata['score'])
-                #cutoff_score = 0.01 #0.5
-                #print(f"score: {score}")
-                #if urls != None and len(urls) > 0 and score >= cutoff_score:
                 if urls != None and len(urls) > 0:
                     return urls
-                    
                 break
+            
+        """
+        # custom
+        bm25_retriever.k = 3
+        retrieved_result = bm25_retriever.search_with_score(context)
+        pretty_print(retrieved_result)
+        print()
+        print(bm25_retriever.invoke(context))
+        
+        for i, index_name in enumerate(index_list):
+            if retrieved_result[0].page_content == index_name:
+                urls = get_index_url(self.index_go_kr_key, i)
+                # cutoff_score 이상이면 보여주자. cutoff_score 이하는 너무 관련이 없는것 같아서..
+                score = float(retrieved_result[0].metadata['score'])
+                cutoff_score = 0.01
+                #print(f"score: {score}")
+                if urls != None and len(urls) > 0 and score >= cutoff_score:
+                    return urls
+                break
+        """
     
     
     # 사건종류:행정 일때 보여줄 통계 데이터
