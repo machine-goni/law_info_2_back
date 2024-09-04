@@ -36,7 +36,7 @@ from langchain_community.retrievers import BM25Retriever
 # 여기서는 kkma 를 사용한다.
 #from langchain_teddynote.retrievers import (
     #KiwiBM25Retriever,  # Kiwi + BM25
-#    KkmaBM25Retriever,  # KonlPy(Kkma) + BM25
+#   KkmaBM25Retriever,  # KonlPy(Kkma) + BM25
     #OktBM25Retriever    # KonlPy(Okt) + BM25
 #)
 # Ensemble Retriever
@@ -53,7 +53,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from GraphState import GraphState
 from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
-from utils import format_docs, format_searched_docs, retriever_with_score, pretty_print, get_index_url, get_prompts_by_casetype
+from utils import retriever_with_score, get_bm25_scores, format_docs, format_searched_docs, pretty_print, get_index_url, get_prompts_by_casetype
 from operator import itemgetter
 import pprint
 from langgraph.errors import GraphRecursionError
@@ -61,6 +61,8 @@ from langchain_core.runnables import RunnableConfig, RunnableLambda
 
 
 PINECONE_INDEX_NAME = "search-precedents"
+VECTORDB_SCORE_CUTOFF = 1.2
+BM25_SCORE_CUTOFF = 10.0
 
 
 # LangGraph 구현 및 설명 참조: https://medium.com/@yoony1007/%EB%9E%AD%EC%B2%B4%EC%9D%B8-%EC%BD%94%EB%A6%AC%EC%95%84-%EB%B0%8B%EC%97%85-2024-q2-%ED%85%8C%EB%94%94%EB%85%B8%ED%8A%B8-%EC%B4%88%EB%B3%B4%EC%9E%90%EB%8F%84-%ED%95%A0-%EC%88%98-%EC%9E%88%EB%8A%94-%EA%B3%A0%EA%B8%89-rag-%EB%8B%A4%EC%A4%91-%EC%97%90%EC%9D%B4%EC%A0%84%ED%8A%B8%EC%99%80-langgraph-%EC%A0%9C%EC%9E%91-e8bec8adfef4
@@ -115,6 +117,7 @@ class AskQuestions:
         # BM25(sparse retriever)
         # BM25 에서 검색할 문서는 pinecone 이 찾아낸 k개의 dense_retrieved_docs 를 base 로 한다.
         # 즉, k개의 같은 문서를 가지고 2가지의 retriever 가 각각 순위를 매긴다.
+        '''
         bm25_retriever = BM25Retriever.from_documents(
             dense_retrieved_docs,
             #metadatas=[{"source": 1}] * len(doc_list_1),
@@ -132,6 +135,9 @@ class AskQuestions:
         #print(bm25_retrieved_docs[0])
         #print(bm25_retrieved_docs[1])
         #print(bm25_retrieved_docs[2])
+        '''
+        bm25_retrieved_scores = get_bm25_scores(dense_retrieved_docs, state["question"])
+        #print(f"\nbm25_retrieved_scores: {bm25_retrieved_scores}\n")
         
         
         # Ensemble (Pinecone + BM25)
@@ -146,8 +152,48 @@ class AskQuestions:
         ensemble_retriever.invoke()
         '''
         # 그래서 아래처럼 직접 각각 검색된 문서에 가중치를 적용하여 ensemble 시킨다.
-        weights = [0.6, 0.4]
+        # bm25 의 유사도 최고 점수에 따라 가중치 비율을 조정해서 적용한다. 최고점수는 리스트 0번의 점수([0][1]).
+        weights = [0.6, 0.4]        # 기본
+        if bm25_retrieved_scores[0][1] < 5:
+            weights = [0.8, 0.2]
+        elif bm25_retrieved_scores[0][1] >= 5 and bm25_retrieved_scores[0][1] < 10:
+            weights = [0.7, 0.3]
+        elif bm25_retrieved_scores[0][1] >= 20 and bm25_retrieved_scores[0][1] < 25:
+            weights = [0.5, 0.5]
+        elif bm25_retrieved_scores[0][1] >= 25:
+            weights = [0.4, 0.6]
+        
         weighted_docs_index = {}
+        
+        '''
+        * 유사도 점수의 의미
+        Pinecone 벡터 데이터베이스에서 유사도 점수는 사용하는 유사도 측정 방식에 따라 다르다. 
+        일반적으로 많이 사용하는 코사인 유사도의 경우, 점수는 -1에서 1 사이의 값을 가지며, 1에 가까울수록 유사도가 높다.
+        다른 유사도 측정 방식, 예를 들어 유클리드 거리나 맨해튼 거리의 경우, 점수가 작을수록 유사도가 높다. 
+        따라서, 어떤 유사도 측정 방식을 사용하는지에 따라 점수의 해석이 달라질 수 있다. 
+
+        BM25의 유사도 점수는 0에서 시작하여 이론적으로는 무한대까지 갈 수 있다. 
+        그러나 실제로는 대부분의 점수가 20 이하이며, 최대 100 이내에서 나타나는 경우가 많다.
+        BM25 점수는 높을수록 문서와 쿼리 간의 유사도가 높다는 것을 의미한다. 
+        즉, 점수가 클수록 해당 문서가 쿼리와 더 관련성이 높다고 판단할 수 있다.
+        '''
+        '''
+        # 아래 코드는 유사도 점수가 1에 가까울수록 높은 유사도로 인정할때 재정렬 시키는 코드이지만.. 의미없다.
+        new_ordered_index = {}
+        for i, doc in enumerate(dense_retrieved_docs):
+            new_ordered_index[i] = abs(1 - doc.metadata['score'])
+            
+        sorted_new_ordered_index = sorted(new_ordered_index.items(), key=lambda x: x[1], reverse=False)
+        new_ordered_dense_retrieved_docs = []
+        for i, tup in enumerate(sorted_new_ordered_index):
+            index = tup[0]
+            new_ordered_dense_retrieved_docs.append(dense_retrieved_docs[index])
+        
+        print(f"sorted_new_ordered_index: {sorted_new_ordered_index}\n")
+        print(f"dense_retrieved_docs - before: {dense_retrieved_docs}\n")
+        dense_retrieved_docs = new_ordered_dense_retrieved_docs
+        print(f"dense_retrieved_docs - after: {dense_retrieved_docs}\n")
+        '''
         
         # 일단 vector db 에서 얻은 문서에 가중치를 적용해서 정리해 논다
         for i, doc in enumerate(dense_retrieved_docs):
@@ -155,26 +201,30 @@ class AskQuestions:
             weighted_score = (nearest_k - i) * weights[0]
             index = doc.metadata['chunk_index']
             weighted_docs_index[index] = weighted_score
-        
-        #print(f'weighted_docs_index_1: {weighted_docs_index}')
+            
+            # bm25_score 도 메타데이터로 넣어논다
+            for chunk_i, bm25_score in bm25_retrieved_scores:
+                if index == chunk_i:
+                    doc.metadata['bm25_score'] = bm25_score
+                    break
+                
+        #print(f'weighted_docs_index_1(dense): {weighted_docs_index}\n')
         
         # 목록 내용과 총개수는 같으니 순위에 따라 가중치를 업데이트 해준다
-        for i, doc in enumerate(bm25_retrieved_docs):
+        for i, (index, score) in enumerate(bm25_retrieved_scores):
             weighted_score = (nearest_k - i) * weights[1]
-            index = doc.metadata['chunk_index']
             weighted_docs_index[index] = weighted_docs_index[index] + weighted_score
-            #print(f'index:{index}, weighted_score:{weighted_score}')
+            print(f'bm25 - index:{index}, score:{score}, weighted_score:{weighted_score}')
             
         # 가중치가 적용된 순위로 (내림차순)정렬
         # key 는 정렬 기준이 되는 요소이다. 즉 x[1] 이 기준. x 의 2번째 인 이유는 lamda 를 거치면서 key:value 가 tuple 되고 튜플 중 key는 [0], value는 [1] 이 되기 때문.
         sorted_docs_index = sorted(weighted_docs_index.items(), key=lambda x: x[1], reverse=True)
-        #print(f'weighted_docs_index_2: {weighted_docs_index}')
-        #print(f'sorted_docs_index: {sorted_docs_index}')
+        #print(f'\nweighted_docs_index_2(dense+bm25): {weighted_docs_index}\n')
+        #print(f'sorted_weight_docs_index: {sorted_docs_index}\n')
         #print("** ALL **")
         #print(dense_retrieved_docs)
         
         retrieved_doc_list = []     # context 로 사용할 최고 (앙상블)점수 문서와 2,3위 문서를 담을 리스트
-        limit_score_diff = 0.2      # pinecone score 가 1 과 limit_score_diff 이상 차이나면 관련 없다고 판단
         for chunk_index, _ in sorted_docs_index:    # sorted_docs_index 는 tuple list 이며, [0]: chunk index, [1]: ensemble score 이다
             if len(retrieved_doc_list) == 3:    # 최대 3개까지만 골라낸다
                 break
@@ -193,11 +243,11 @@ class AskQuestions:
                                 break
                             
                         # 같은 판례번호의 문서가 들어있지 않다면 추가하고 다음 점수 순위의 문서 비교
-                        # 1 - score 가 limit_score_diff 보다 작아야 관련성 있다고 판단
-                        if already_exist == False and (abs(1 - doc.metadata['score']) < limit_score_diff):
+                        # 유사도 점수상 최소한의 수치는 나와야 관련성이 있다고 판단
+                        if already_exist == False and (doc.metadata['score'] <= VECTORDB_SCORE_CUTOFF or doc.metadata['bm25_score'] > BM25_SCORE_CUTOFF):
                             retrieved_doc_list.append(doc)
-                            break
-                    
+                            break                            
+        
         return GraphState(retrieved_docs=retrieved_doc_list)
         
     
@@ -210,6 +260,7 @@ class AskQuestions:
             prec_no = str(top_doc.metadata['prec_no'])
             chunk_index = int(top_doc.metadata['chunk_index'])
             vectorDB_score = float(top_doc.metadata['score'])
+            bm25_score = float(top_doc.metadata['bm25_score'])
             
             etc_prec_numbers = []
             for i in range(1, len(retrieved_docs)):
@@ -256,7 +307,7 @@ class AskQuestions:
                 context_doc = context_doc + "\n" + end_of_parts.page_content
             
             #print(f"** context_doc: \n{context_doc}")
-            return GraphState(vectordb_score=vectorDB_score, context=context_doc, etc_relevant_precs=etc_prec_numbers)
+            return GraphState(vectordb_score=vectorDB_score, bm25_score=bm25_score, context=context_doc, etc_relevant_precs=etc_prec_numbers)
         
         else:
             return GraphState(vectordb_score=0)
@@ -270,6 +321,7 @@ class AskQuestions:
             top_doc = retrieved_docs[0]
             prec_no = str(top_doc.metadata['prec_no'])
             vectorDB_score = float(top_doc.metadata['score'])
+            bm25_score = float(top_doc.metadata['bm25_score'])
             
             etc_prec_numbers = []
             for i in range(1, len(retrieved_docs)):
@@ -323,47 +375,75 @@ class AskQuestions:
         
             context_doc = format_docs(sorted_docs)
             #print(f"** context_doc: \n{context_doc}")
-        
-            # csv 의 column 대로 dictionary 로 만들어 쓸꺼 쓰고, 뺄꺼 빼고, 나중에 따로 쓸것도 뽑아 낸다.
-            column_names = ['prec_no: ', 'case_name: ', 'case_no: ', 'sentence_date: ', 'case_type: ', 'summary: ', 'point: ', 'ref_article: ', 'prec_content: ']
-            # 컨텍스트에 넣을 내용은 LLM 이 참고하기 쉽게 컬럼명도 바꿔서 넣어준다. 하지만 진짜 key 를 바꾸는건 아니다.
-            column_names_new = {'prec_no':'prec_no: ', 'case_name':'사건명: ', 'case_no':'사건번호: ', 'sentence_date':'sentence_date: ', 'case_type':'사건종류: ', 'summary':'판시사항: ', 'point':'판결요지: ', 'ref_article':'참조조문: ', 'prec_content':'판례전문: '}
-            splitted = context_doc.split("\n")
-            #print(f"** splited: ")
+            
+            # 아래처럼 구분자를 여러개 쓰려면 정규식을 쓰거나 구분자를 변경한다음 통일시켜서 쓰면된다.
+            context_doc = context_doc.replace('prec_no: ', 'split: prec_no:')
+            context_doc = context_doc.replace('case_name: ', 'split: 사건명:')
+            context_doc = context_doc.replace('case_no: ', 'split: 사건번호:')
+            context_doc = context_doc.replace('sentence_date: ', 'split: sentence_date:')
+            context_doc = context_doc.replace('case_type: ', 'split: 사건종류:')
+            context_doc = context_doc.replace('summary: ', 'split: 판시사항:')
+            context_doc = context_doc.replace('point: ', 'split: 판결요지:')
+            context_doc = context_doc.replace('ref_article: ', 'split: 참조조문:')
+            context_doc = context_doc.replace('prec_content: ', 'split: 판례전문:')
+            
+            splitted = context_doc.split('split: ')
             content_dict = {}
             content_dict_2 = {}     # 나중에 프론트엔드에서 따로 써먹을 요소만 따로 뽑아 놓는다
+            
+            #print(f"** splited: ")
             for piece in splitted:
-                #print(f"piece:\n{piece}")
+                piece = piece.replace('\n', '')
+                piece = piece.replace('\t', '')
+                piece = piece.replace('         ', '')
+                piece = piece.replace('<br/>', '\n')
+                piece = piece.strip()
                 
-                for name in column_names:
-                    if piece.find(name) != -1:
-                        key_name = name[:-2]
-                        piece = piece.replace('<br/>', '\n')
-                        piece = piece.strip()
-                        content_dict[key_name] = piece.replace(name, column_names_new[key_name])
-                        
-                        if name == 'prec_no: ' or name == 'case_no: ' or name == 'ref_article: ':
-                            content_dict_2[key_name] = piece.replace(name, '')
-                            
-                        break
+                if piece.find('prec_no:') != -1:
+                    piece = piece.replace('prec_no:', '')
+                    content_dict_2['prec_no'] = piece
+                    
+                elif piece.find('사건번호:') != -1:
+                    content_dict_2['case_no'] = piece
+                    content_dict['case_no'] = piece
+                    
+                elif piece.find('참조조문:') != -1:
+                    content_dict_2['ref_article'] = piece
+                    content_dict['ref_article'] = piece
+                    
+                elif piece.find('사건명:') != -1:
+                    content_dict['case_name'] = piece
                 
-            #print(f"content_dict: \n{content_dict}")
+                elif piece.find('판시사항:') != -1:
+                    content_dict['summary'] = piece
+                    
+                elif piece.find('판결요지:') != -1:
+                    content_dict['point'] = piece
+                    
+                elif piece.find('판례전문:') != -1:
+                    content_dict['prec_content'] = piece
+                    
+                #print(f"piece:\n{piece}\n")
+                
             context_doc = "\n".join([content_dict['case_name'], content_dict['case_no'], content_dict['summary'], content_dict['point'], content_dict['ref_article'], content_dict['prec_content']])
+            #print(f"** new context_doc: \n{context_doc}\n")
             #print(f"** splited end **")
             
             # 1순위는 본문 전체를, 2/3순위는 판례일련번호만 넘긴다
-            return GraphState(vectordb_score=vectorDB_score, context=context_doc, vectordb_choice=content_dict_2, etc_relevant_precs=etc_prec_numbers)
-        
+            return GraphState(vectordb_score=vectorDB_score, bm25_score=bm25_score, context=context_doc, vectordb_choice=content_dict_2, etc_relevant_precs=etc_prec_numbers)
+            
         else:
             return GraphState(vectordb_score=0)
 
     
     def relevance_check(self, state: GraphState) -> GraphState:
-        relevance = True
+        relevance = False
         
-        # pinecone score 기준으로 1 에서 차이가 0.15 를 초과하면 웹 서치를 진행
-        if abs(1 - state["vectordb_score"]) > 0.15:
-            relevance = False
+        # 유사도 점수가 허용범위 밖이면 웹 서치 진행
+        #print(f"relevance_check - vectordb_score: {state['vectordb_score']}")
+        #print(f"relevance_check - bm25_score: {state['bm25_score']}\n")
+        if state["vectordb_score"] <= VECTORDB_SCORE_CUTOFF or state['bm25_score'] > BM25_SCORE_CUTOFF:
+            relevance = True
         
         return GraphState(relevance=relevance)
 
@@ -493,17 +573,6 @@ class AskQuestions:
             # ensemble_retriever 에서는 format_docs 를 ensemble 용으로 따로 만들어서 검색문서의 metadata 를 보고 달리 처리를 해야한다.
             # 예를 들어 tavily 같은 경우에는 metadata 안의 'source' 에 'https' 라는 문자열이 있으면 format_docs_tavily 와 같은 처리를 해주면 된다.
             # 아니면 Pinecone 에 문서 embedding 을 할 때 metadata 에 'retriver_type:DB' 라고 넣어주는 것도 좋을것 같다.
-            
-            """
-            {
-                #'context': self.retriever,
-                #'context': self.retriever | format_docs,
-                #'context': retriever | format_docs, # vectorDB 를 사용한 retriever
-                'context': retriever_tavily | format_docs_tavily, # tavily search 를 사용한 retriever
-                #'context': ensemble_retriever | format_docs, # ensemble retriever. 아직 미완성. tavily 는 format_docs_tavily 를 쓰기 때문에
-                'question': RunnablePassthrough()
-            } 
-            """
             qa_chain = (
                 {"question": itemgetter("question"), "context": itemgetter("context")}
                 | prompt | self.llm | StrOutputParser()
@@ -524,7 +593,7 @@ class AskQuestions:
     def build_workflow_rag(self):
         # langgraph.graph에서 StateGraph와 END를 가져옵니다.
         workflow = StateGraph(GraphState)
-
+        
         # 노드 정의. 확실히 그 이유인지는 모르지만, 추가만 해놓고 안쓰는 노드가 있으면 에러난다.
         workflow.add_node("retrieve", self.retrieve_document)                   # retrieve 검색 노드 추가
         #workflow.add_node("merge_docs", self.merge_retrieved_document)         # 문서 병합(첫,끝,선택부분) 노드 추가
@@ -537,6 +606,7 @@ class AskQuestions:
         # 각 노드 연결
         workflow.add_edge("retrieve", "merge_all_docs")  # 검색 -> 병합
         workflow.add_edge("merge_all_docs", "relevance_check")  # 병합 -> 관련성 체크
+        
         
         # 조건부 엣지 추가
         workflow.add_conditional_edges(
@@ -551,7 +621,13 @@ class AskQuestions:
         workflow.add_edge("search_on_web", "llm_answer")    # 웹 검색 -> 답변
         workflow.add_edge("llm_answer", END)                # 반드시 마지막으로 'END' 가 와야 한다. 
         
-
+        # test workflow 
+        '''
+        workflow.add_node("retrieve", self.retrieve_document)
+        workflow.add_edge("retrieve", END)
+        '''
+        
+        
         # 시작 노드 설정
         workflow.set_entry_point("retrieve")
 
@@ -589,7 +665,7 @@ class AskQuestions:
                     # 노드의 이름과 해당 노드에서 나온 출력을 출력합니다.
                     pprint.pprint(f"Output from node '{key}':")
                     #pprint.pprint("---")
-                    # 출력 값을 예쁘게 출력합니다.
+                    # 출력 값 출력
                     #pprint.pprint(value, indent=2, width=80, depth=None)
                     
                 if key == "llm_answer" and "answer" in value:
