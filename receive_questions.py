@@ -51,6 +51,7 @@ class RecvQuestions:
         # 사건 종류에 따라 보여줄 통계가 다르다
         if case_type == '형사':
             statistics_url = self.ask_instance.statistics_criminal(question)
+            #statistics_url = self.ask_instance.statistics_criminal(f'{question} {question_result.get("answer")}')
         elif case_type == '행정':
             statistics_url = self.ask_instance.statistics_administrative()
             
