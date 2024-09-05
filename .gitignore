@@ -1,4 +1,5 @@
 __pycache__/
+.streamlit/*
 csvs/
 documents/
 images/
