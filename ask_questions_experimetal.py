@@ -136,6 +136,8 @@ class AskQuestions:
         #print(bm25_retrieved_docs[1])
         #print(bm25_retrieved_docs[2])
         '''
+        # 이거 토큰화해서 형태소 분석하는 부분이 메모리를 엄청 먹는다. 로컬에서는 상관없지만 cloudtype 에 올려쓸땐 512M 로 설정하면 서버가 죽는다.
+        # 이 코드 나중에 개선이 필요하다.
         bm25_retrieved_scores = get_bm25_scores(dense_retrieved_docs, state["question"])
         #print(f"\nbm25_retrieved_scores: {bm25_retrieved_scores}\n")
         
@@ -655,6 +657,7 @@ class AskQuestions:
         
         # 대화내역 리셋. 자동이긴 하지만 혹시 모르니 가비지 컬렉션도 실행해 주자.
         self.store = {}
+        # 가비지 컬렉션 반드시 해줘야 한다. 지금 사용하고 있는 cloudtype 의 메모리가 1GB 인데, BM25 tokenizer 때문에 거의 1G 를 다 사용해서 간당간당하다.
         gc.collect()
         
         # app.stream을 통해 입력된 메시지에 대한 출력을 스트리밍합니다.
