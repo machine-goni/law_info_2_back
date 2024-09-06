@@ -100,7 +100,6 @@ class AskQuestions:
     
     # vector store 에서 관련 있는 문서 검색
     def retrieve_document(self, state: GraphState) -> GraphState:
-        print(f"experi_retrieve_document: start")
         nearest_k = 10
         
         # pinecone
@@ -110,8 +109,8 @@ class AskQuestions:
         if dense_retrieved_docs == None:
             return GraphState(retrieved_docs=[])
         
-        print('pinecones choice:')
-        print(dense_retrieved_docs[0])
+        #print('pinecones choice:')
+        #print(dense_retrieved_docs[0])
         #print(dense_retrieved_docs[1])
         #print(dense_retrieved_docs[2])
                 
@@ -138,7 +137,7 @@ class AskQuestions:
         #print(bm25_retrieved_docs[2])
         '''
         bm25_retrieved_scores = get_bm25_scores(dense_retrieved_docs, state["question"])
-        print(f"\nbm25_retrieved_scores: {bm25_retrieved_scores}\n")
+        #print(f"\nbm25_retrieved_scores: {bm25_retrieved_scores}\n")
         
         
         # Ensemble (Pinecone + BM25)
@@ -665,9 +664,9 @@ class AskQuestions:
                 for key, value in output.items():
                     # 노드의 이름과 해당 노드에서 나온 출력을 출력합니다.
                     pprint.pprint(f"Output from node '{key}':")
-                    pprint.pprint("---")
+                    #pprint.pprint("---")
                     # 출력 값 출력
-                    pprint.pprint(value, indent=2, width=80, depth=None)
+                    #pprint.pprint(value, indent=2, width=80, depth=None)
                     
                 if key == "llm_answer" and "answer" in value:
                     answer = value["answer"]
@@ -682,7 +681,7 @@ class AskQuestions:
                     etc_relevant_precs = value["etc_relevant_precs"]
                 
                 # 각 출력 사이에 구분선을 추가합니다.
-                pprint.pprint("\n---\n")
+                #pprint.pprint("\n---\n")
                 
         except GraphRecursionError as e:
             #pprint.pprint(f"Recursion limit reached: {e}")
@@ -700,7 +699,6 @@ class AskQuestions:
         
         #answer = self.run_workflow(inputs)
         answer, relevance, vectordb_choice, etc_relevant_precs = self.run_workflow(inputs)
-        print(f"experi_question: {answer}, \n{relevance}, \n{vectordb_choice}, \n{etc_relevant_precs}")
         
         result_dict = {"answer":answer, "relevance":relevance, "vectordb_choice":vectordb_choice, "etc_relevant_precs":etc_relevant_precs}    
         

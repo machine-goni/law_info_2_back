@@ -63,7 +63,7 @@ class RecvQuestions:
         result_data["etc_relevant_precs"] = question_result.get("etc_relevant_precs")
         result_data["statistics_url"] = statistics_url
         
-        print(f"/RecvQuestions_question - {question}: \n{result_data}")
+        #print(f"/RecvQuestions_question - {question}: \n{result_data}")
                         
         return result_data
     
@@ -74,7 +74,7 @@ class RecvQuestions:
         result_data = {}
         result_data["answer"] = result.get("answer")
         
-        print(f"/RecvQuestions_advice - {question}: \n{result_data}")
+        #print(f"/RecvQuestions_advice - {question}: \n{result_data}")
                         
         return result_data
     
