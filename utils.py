@@ -37,6 +37,13 @@ def get_bm25_scores(docs: List[Document], query: str) -> list:
     kiwi = Kiwi()
     print(f"utils_get_bm25_scores - 1")
     # 문서들을 형태소 분석하여 토큰화
+    
+    
+    # test
+    token_list = kiwi.tokenize(docs[0].page_content)
+    print(f"utils_get_bm25_scores - 1_1: {token_list}")
+    
+    
     tokenized_docs = [kiwi.tokenize(doc.page_content) for doc in docs]
     print(f"utils_get_bm25_scores - 2")
     # 형태소 분석 결과에서 형태소만 추출
