@@ -213,7 +213,8 @@ class AskQuestions:
         #print(f'weighted_docs_index_1(dense): {weighted_docs_index}\n')
         
         # 목록 내용과 총개수는 같으니 순위에 따라 가중치를 업데이트 해준다
-        for i, (index, score) in enumerate(bm25_retrieved_scores):
+        #for i, (index, score) in enumerate(bm25_retrieved_scores):
+        for i, (index, _) in enumerate(bm25_retrieved_scores):
             weighted_score = (nearest_k - i) * weights[1]
             weighted_docs_index[index] = weighted_docs_index[index] + weighted_score
             #print(f'bm25 - index:{index}, score:{score}, weighted_score:{weighted_score}')
@@ -249,6 +250,11 @@ class AskQuestions:
                         if already_exist == False and (doc.metadata['score'] <= VECTORDB_SCORE_CUTOFF or doc.metadata['bm25_score'] > BM25_SCORE_CUTOFF):
                             retrieved_doc_list.append(doc)
                             break                            
+        
+        # 메모리 해제
+        del dense_retrieved_docs
+        del bm25_retrieved_scores
+        gc.collect()
         
         return GraphState(retrieved_docs=retrieved_doc_list)
         
@@ -593,6 +599,9 @@ class AskQuestions:
     
     # 구현된 node 와 edge 로 workflow 정의
     def build_workflow_rag(self):
+        # 메모리 해제
+        gc.collect()
+        
         # langgraph.graph에서 StateGraph와 END를 가져옵니다.
         workflow = StateGraph(GraphState)
         
@@ -655,10 +664,12 @@ class AskQuestions:
         vectordb_choice = {}
         etc_relevant_precs = []
         
-        # 대화내역 리셋. 자동이긴 하지만 혹시 모르니 가비지 컬렉션도 실행해 주자.
-        self.store = {}
         # 가비지 컬렉션 반드시 해줘야 한다. 지금 사용하고 있는 cloudtype 의 메모리가 1GB 인데, BM25 tokenizer 때문에 거의 1G 를 다 사용해서 간당간당하다.
+        del self.store
         gc.collect()
+        
+        # 대화내역 리셋.
+        self.store = {}
         
         # app.stream을 통해 입력된 메시지에 대한 출력을 스트리밍합니다.
         try:
@@ -923,6 +934,9 @@ class AskQuestions:
     
     
     def build_workflow_advice(self):
+        # 메모리 해제
+        gc.collect()
+        
         workflow = StateGraph(GraphState)
 
         # 노드 추가
@@ -988,6 +1002,9 @@ class AskQuestions:
     
     
     def build_workflow_write_paper_1(self):
+        # 메모리 해제
+        gc.collect()
+        
         workflow = StateGraph(GraphState)
 
         # 노드 추가
@@ -1071,6 +1088,9 @@ class AskQuestions:
     
     
     def build_workflow_write_paper_2(self):
+        # 메모리 해제
+        gc.collect()
+        
         workflow = StateGraph(GraphState)
 
         # 노드 추가
@@ -1225,6 +1245,9 @@ class AskQuestions:
     
     
     def build_workflow_write_paper_4(self):
+        # 메모리 해제
+        gc.collect()
+        
         workflow = StateGraph(GraphState)
 
         # 노드 추가
@@ -1371,6 +1394,9 @@ class AskQuestions:
     
     
     def build_workflow_write_paper_5(self):
+        # 메모리 해제
+        gc.collect()
+        
         workflow = StateGraph(GraphState)
 
         # 노드 추가
@@ -1513,6 +1539,9 @@ class AskQuestions:
     
     
     def build_workflow_write_paper_6(self):
+        # 메모리 해제
+        gc.collect()
+        
         workflow = StateGraph(GraphState)
 
         # 노드 추가

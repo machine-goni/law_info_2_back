@@ -8,6 +8,8 @@ from langchain_pinecone import PineconeVectorStore
 from kiwipiepy import Kiwi
 from rank_bm25 import BM25Okapi
 
+import gc
+
 
 
 # 유사도 점수를 얻기 위해 만든 함수. chain 으로 wrapping 되어있어 chain.invoke() 를 통해서 실행된다.
@@ -57,6 +59,13 @@ def get_bm25_scores(docs: List[Document], query: str) -> list:
         ordered_score_index[index] = score
         #print(f"문서 {i+1}: 점수 {score:.4f}")
         
+    
+    # 메모리해제
+    del kiwi
+    del bm25
+    del tokenized_docs
+    gc.collect()
+        
     return sorted(ordered_score_index.items(), key=lambda x: x[1], reverse=True)
 
 def get_bm25_scores_from_str_list(docs: List[str], query: str) -> list:
@@ -83,6 +92,13 @@ def get_bm25_scores_from_str_list(docs: List[str], query: str) -> list:
     for i, score in enumerate(scores):
         ordered_score_index[i] = score
         #print(f"문서 {i+1}: 점수 {score:.4f}")
+    
+        
+    # 메모리해제
+    del kiwi
+    del bm25
+    del tokenized_docs
+    gc.collect()
         
     return sorted(ordered_score_index.items(), key=lambda x: x[1], reverse=True)
 
@@ -731,10 +747,8 @@ prompts_by_casetype["고소장_2"] = """
 []
 
 증거 자료
-[증거 자료
 1.
 2.
-]
 
 관련 사건의 수사 및 재판 여부:
 [관련 사건의 수사 및 재판 여부의 내용을 참조하여 작성
