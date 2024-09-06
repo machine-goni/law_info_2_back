@@ -117,7 +117,7 @@ def operate():
 @app.post("/build")
 def operate(input:Workflow_type):
     result = receiver.build_workflow(input.workflow_type)
-    print(f"/build - {input.workflow_type}: {result}")
+    print(f"/build: {result}")
 
     return result
 

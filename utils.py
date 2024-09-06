@@ -32,24 +32,25 @@ def _retriever_with_score(query: str, vectorstore: PineconeVectorStore, k: int, 
 
 # bm25 와 함께 kiwi 한글형태소 분석기와 유사도 점수를 사용
 def get_bm25_scores(docs: List[Document], query: str) -> list:
+    print(f"utils_get_bm25_scores - start: {query}")
     # Kiwi 형태소 분석기 초기화
     kiwi = Kiwi()
-
+    print(f"utils_get_bm25_scores - 1")
     # 문서들을 형태소 분석하여 토큰화
     tokenized_docs = [kiwi.tokenize(doc.page_content) for doc in docs]
-
+    print(f"utils_get_bm25_scores - 2")
     # 형태소 분석 결과에서 형태소만 추출
     tokenized_docs = [[token.form for token in doc] for doc in tokenized_docs]
-
+    print(f"utils_get_bm25_scores - 3")
     # BM25 모델 초기화
     bm25 = BM25Okapi(tokenized_docs)
-
+    print(f"utils_get_bm25_scores - 4")
     # 쿼리를 형태소 분석하여 토큰화
     tokenized_query = [token.form for token in kiwi.tokenize(query)]
-
+    print(f"utils_get_bm25_scores - 5")
     # BM25를 사용하여 유사도 계산
     scores = bm25.get_scores(tokenized_query)
-
+    print(f"utils_get_bm25_scores - 6")
     # 결과 출력
     ordered_score_index = {}
     for i, score in enumerate(scores):
@@ -57,6 +58,7 @@ def get_bm25_scores(docs: List[Document], query: str) -> list:
         ordered_score_index[index] = score
         #print(f"문서 {i+1}: 점수 {score:.4f}")
         
+    print(f"utils_get_bm25_scores - 7: {ordered_score_index}")
     return sorted(ordered_score_index.items(), key=lambda x: x[1], reverse=True)
 
 def get_bm25_scores_from_str_list(docs: List[str], query: str) -> list:
