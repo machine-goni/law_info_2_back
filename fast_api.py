@@ -117,7 +117,7 @@ def operate():
 @app.post("/build")
 def operate(input:Workflow_type):
     result = receiver.build_workflow(input.workflow_type)
-    #print(f"/build: {result}")
+    print(f"/build - {input.workflow_type}: {result}")
 
     return result
 
@@ -126,6 +126,7 @@ def operate(input:Workflow_type):
 @app.post("/question")
 def operate(input:User_inputs):
     result = receiver.question(input.question, input.case_type)
+    print(f"/question - {input.question}: \n{result}")
     
     # 보내기 직전에 json 으로 변환시킨다
     return json.dumps(result)
@@ -135,6 +136,7 @@ def operate(input:User_inputs):
 @app.post("/advice")
 def operate(input:User_inputs_advice):
     result = receiver.advice(input.is_post_conversation, input.status, input.question, input.add_info)
+    print(f"/advice - {input.question}: \n{result}")
     
     # 보내기 직전에 json 으로 변환시킨다
     return json.dumps(result)
