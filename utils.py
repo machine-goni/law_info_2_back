@@ -9,7 +9,8 @@ from kiwipiepy import Kiwi
 from rank_bm25 import BM25Okapi
 
 import gc
-
+#from memory_profiler import profile
+#import sys  # 레퍼런스 카운트를 보려면
 
 
 # 유사도 점수를 얻기 위해 만든 함수. chain 으로 wrapping 되어있어 chain.invoke() 를 통해서 실행된다.
@@ -33,17 +34,23 @@ def _retriever_with_score(query: str, vectorstore: PineconeVectorStore, k: int, 
     
 
 # bm25 와 함께 kiwi 한글형태소 분석기와 유사도 점수를 사용
-def get_bm25_scores(docs: List[Document], query: str) -> list:
+#@profile
+def get_bm25_scores(kiwi: Kiwi, docs: List[Document], query: str) -> list:
     # Kiwi 형태소 분석기 초기화
-    kiwi = Kiwi()
+    #kiwi = Kiwi()
     
     # 문서들을 형태소 분석하여 토큰화
+    # 주의 할 점은 토큰화 데이터가 용량을 상당히 차지하게 되는데 새로운 토큰화가 이뤄지면 용량이 계속 쌓이게 된다.
+    # 한번쓰고 초기화할 수 있는 방법이 없다. 새로운 토큰들이 무한정 있지 않을것이기 때문에 용량이 무한정 늘진 않겠지만 어느정도는 감안해야 한다.
     tokenized_docs = [kiwi.tokenize(doc.page_content) for doc in docs]
     
     # 형태소 분석 결과에서 형태소만 추출
     tokenized_docs = [[token.form for token in doc] for doc in tokenized_docs]
     
     # BM25 모델 초기화
+    # 아래 tokenized_docs 는 단순히 띄어쓰기로 문서를 파싱했다. 한글은 형태소 단위로 분석하는 것이 더 좋기 때문에 kiwi 를 쓰는 것인데
+    # 메모리가 사용할때마다 해제가 안되고 쌓이는 문제가 있어 문제가 해결되지 않는다면 주석친 tokenized_docs 를 사용하기로 한다.
+    #tokenized_docs = [(doc.page_content).split(" ") for doc in docs]
     bm25 = BM25Okapi(tokenized_docs)
     
     # 쿼리를 형태소 분석하여 토큰화
@@ -59,19 +66,17 @@ def get_bm25_scores(docs: List[Document], query: str) -> list:
         ordered_score_index[index] = score
         #print(f"문서 {i+1}: 점수 {score:.4f}")
         
+    # 레퍼런스 카운트 확인
+    #print(f"tokenized_docs ref1: {sys.getrefcount(tokenized_docs)}")
     
-    # 메모리해제
-    del kiwi
-    del bm25
     del tokenized_docs
+    del bm25
     gc.collect()
         
     return sorted(ordered_score_index.items(), key=lambda x: x[1], reverse=True)
 
-def get_bm25_scores_from_str_list(docs: List[str], query: str) -> list:
-    # Kiwi 형태소 분석기 초기화
-    kiwi = Kiwi()
-
+#@profile
+def get_bm25_scores_from_str_list(kiwi: Kiwi, docs: List[str], query: str) -> list:
     # 문서들을 형태소 분석하여 토큰화
     tokenized_docs = [kiwi.tokenize(doc) for doc in docs]
 
@@ -93,11 +98,8 @@ def get_bm25_scores_from_str_list(docs: List[str], query: str) -> list:
         ordered_score_index[i] = score
         #print(f"문서 {i+1}: 점수 {score:.4f}")
     
-        
-    # 메모리해제
-    del kiwi
-    del bm25
     del tokenized_docs
+    del bm25
     gc.collect()
         
     return sorted(ordered_score_index.items(), key=lambda x: x[1], reverse=True)
@@ -223,7 +225,7 @@ prompts_by_casetype["형사"] = """
 - 다음 주어진 [Context] 를 검토하고 관련성이 있다면 [Context]를 기반으로 질문에 답해라.
 - 주어진 [Context] 가 관련성이 있고 [Context] 안에 관련 법률이나 '참조조문'이 있다면 글머리 기호로 추가. 하지만 [Context] 안에 없거나 관련성이 없다면 추가하지 마라.
 - 주어진 [Context] 가 관련성이 있고 [Context] 안에 '판례전문'이 있다면 '판례전문'을 '참조 판례 요약' 이라는 제목으로 요약해서 추가. 하지만 [Context] 안에 없거나 관련성이 없다면 추가하지 마라.
-- 구체적인 법률 조항의 언급은 주어진 [Context] 안에 관련 내용과 조항이 있다면 언급해도 되지만 그렇지 않다면 구체적인 법률 조항을 의뢰인에게 보이지 마라.
+- 구체적인 법률 조항의 언급은 주어진 [Context] 안에 관련 내용과 조항이 있다면 언급해도 되지만 그렇지 않다면 구체적인 법률 조항을 의뢰인에게 보이지 마라. 또한 법조항 내용의 인용도 [Context] 의 해당 부분을 기반으로 해라.
 - 형량의 경우 주어진 [Context] 안에 관련 내용이 있거나 정확히 알고 있을때는 언급하지만 그렇지 않다면 구체적인 형량을 의뢰인에게 보이지 마라.
 - 답변 내용 중 연관된 법률 용어와 내용을 글머리 기호로 추가
 - 답을 모른다면 절대로 지어내지말고 모른다고 답해라.
@@ -253,7 +255,7 @@ prompts_by_casetype["민사"] = """
 - 다음 주어진 [Context] 를 검토하고 관련성이 있다면 [Context]를 기반으로 질문에 답해라.
 - 주어진 [Context] 가 관련성이 있고 [Context] 안에 관련 법률이나 '참조조문'이 있다면 글머리 기호로 추가. 하지만 [Context] 안에 없거나 관련성이 없다면 추가하지 마라.
 - 주어진 [Context] 가 관련성이 있고 [Context] 안에 '판례전문'이 있다면 '판례전문'을 '참조 판례 요약' 이라는 제목으로 요약해서 추가. 하지만 [Context] 안에 없거나 관련성이 없다면 추가하지 마라.
-- 구체적인 법률 조항의 언급은 주어진 [Context] 안에 관련 내용과 조항이 있다면 언급해도 되지만 그렇지 않다면 구체적인 법률 조항을 의뢰인에게 보이지 마라.
+- 구체적인 법률 조항의 언급은 주어진 [Context] 안에 관련 내용과 조항이 있다면 언급해도 되지만 그렇지 않다면 구체적인 법률 조항을 의뢰인에게 보이지 마라. 또한 법조항 내용의 인용도 [Context] 의 해당 부분을 기반으로 해라.
 - 답변 내용 중 연관된 법률 용어와 내용을 글머리 기호로 추가
 - 답을 모른다면 절대로 지어내지말고 모른다고 답해라.
 - 반드시 한국어로 답변
@@ -282,7 +284,7 @@ prompts_by_casetype["가사"] = """
 - 다음 주어진 [Context] 를 검토하고 관련성이 있다면 [Context]를 기반으로 질문에 답해라.
 - 주어진 [Context] 가 관련성이 있고 [Context] 안에 관련 법률이나 '참조조문'이 있다면 글머리 기호로 추가. 하지만 [Context] 안에 없거나 관련성이 없다면 추가하지 마라.
 - 주어진 [Context] 가 관련성이 있고 [Context] 안에 '판례전문'이 있다면 '판례전문'을 '참조 판례 요약' 이라는 제목으로 요약해서 추가. 하지만 [Context] 안에 없거나 관련성이 없다면 추가하지 마라.
-- 구체적인 법률 조항의 언급은 주어진 [Context] 안에 관련 내용과 조항이 있다면 언급해도 되지만 그렇지 않다면 구체적인 법률 조항을 의뢰인에게 보이지 마라.
+- 구체적인 법률 조항의 언급은 주어진 [Context] 안에 관련 내용과 조항이 있다면 언급해도 되지만 그렇지 않다면 구체적인 법률 조항을 의뢰인에게 보이지 마라. 또한 법조항 내용의 인용도 [Context] 의 해당 부분을 기반으로 해라.
 - 답변 내용 중 연관된 법률 용어와 내용을 글머리 기호로 추가
 - 답을 모른다면 절대로 지어내지말고 모른다고 답해라.
 - 반드시 한국어로 답변
@@ -310,7 +312,7 @@ prompts_by_casetype["행정"] = """
 - 다음 주어진 [Context] 를 검토하고 관련성이 있다면 [Context]를 기반으로 질문에 답해라.
 - 주어진 [Context] 가 관련성이 있고 [Context] 안에 관련 법률이나 '참조조문'이 있다면 글머리 기호로 추가. 하지만 [Context] 안에 없거나 관련성이 없다면 추가하지 마라.
 - 주어진 [Context] 가 관련성이 있고 [Context] 안에 '판례전문'이 있다면 '판례전문'을 '참조 판례 요약' 이라는 제목으로 요약해서 추가. 하지만 [Context] 안에 없거나 관련성이 없다면 추가하지 마라.
-- 구체적인 법률 조항의 언급은 주어진 [Context] 안에 관련 내용과 조항이 있다면 언급해도 되지만 그렇지 않다면 구체적인 법률 조항을 의뢰인에게 보이지 마라.
+- 구체적인 법률 조항의 언급은 주어진 [Context] 안에 관련 내용과 조항이 있다면 언급해도 되지만 그렇지 않다면 구체적인 법률 조항을 의뢰인에게 보이지 마라. 또한 법조항 내용의 인용도 [Context] 의 해당 부분을 기반으로 해라.
 - 답변 내용 중 연관된 법률 용어와 내용을 글머리 기호로 추가
 - 답을 모른다면 절대로 지어내지말고 모른다고 답해라.
 - 반드시 한국어로 답변

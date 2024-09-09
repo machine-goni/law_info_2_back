@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from typing import List
 import datetime
 import gc
+#from memory_profiler import profile
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
@@ -29,7 +30,8 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.documents.base import Document
 # BM25
-from langchain_community.retrievers import BM25Retriever
+from kiwipiepy import Kiwi
+#from langchain_community.retrievers import BM25Retriever
 # 아래의 패키지를 사용하고 싶지만 아래의 패키지를 사용하려면 JVM 을 써야하고 그렇게 되면 로컬에서는 상관없지만
 # 클라우드에 올릴땐 docker 로 만들어서 올려야 한다. 그래서 그냥 langchain 걸 쓴다.
 # BM25 (커스텀 구현한 한국어 형태소 분석기 적용). 아래 3가지 중에 어떤게 가장 성능이 좋은지는 확인을 해봐야 알겠지만,
@@ -95,10 +97,16 @@ class AskQuestions:
         self.case_type = ""
         self.store = {}     # 세션 기록(대화 히스토리)을 저장할 딕셔너리
         
+        # kiwi 인스턴스 자체가 용량을 상당히 많이 차지하고, 형태소 분석을 하게되면 인스턴스 해제를 한다고 해도
+        # 메모리가 완전히 반환되지 않는다(라이브러리 문제인듯). 그래서 새로 만들때마다 메모리를 계속 차지하기 때문에
+        # 그때 그때 쓰고 지우는 방식은 소용이 없다. 그래서 member 로 두고 사용한다.
+        self.kiwi = None
+        
         
     # -- node 가 될 함수들 (langgraph 에서 node 는 GraphState 를 받고 GraphState 를 넘겨줘야 한다) --
     
     # vector store 에서 관련 있는 문서 검색
+    #@profile
     def retrieve_document(self, state: GraphState) -> GraphState:
         nearest_k = 10
         
@@ -136,9 +144,12 @@ class AskQuestions:
         #print(bm25_retrieved_docs[1])
         #print(bm25_retrieved_docs[2])
         '''
-        # 이거 토큰화해서 형태소 분석하는 부분이 메모리를 엄청 먹는다. 로컬에서는 상관없지만 cloudtype 에 올려쓸땐 512M 로 설정하면 서버가 죽는다.
-        # 이 코드 나중에 개선이 필요하다.
-        bm25_retrieved_scores = get_bm25_scores(dense_retrieved_docs, state["question"])
+        
+        # 위에서 설명한 이유로 member 로 처리.
+        if self.kiwi == None:
+            self.kiwi = Kiwi()
+            
+        bm25_retrieved_scores = get_bm25_scores(self.kiwi, dense_retrieved_docs, state["question"])
         #print(f"\nbm25_retrieved_scores: {bm25_retrieved_scores}\n")
         
         
@@ -213,8 +224,8 @@ class AskQuestions:
         #print(f'weighted_docs_index_1(dense): {weighted_docs_index}\n')
         
         # 목록 내용과 총개수는 같으니 순위에 따라 가중치를 업데이트 해준다
-        #for i, (index, score) in enumerate(bm25_retrieved_scores):
-        for i, (index, _) in enumerate(bm25_retrieved_scores):
+        #for i, (index, score) in enumerate(bm25_retrieved_scores): # test
+        for i, (index, _) in enumerate(bm25_retrieved_scores):      # original
             weighted_score = (nearest_k - i) * weights[1]
             weighted_docs_index[index] = weighted_docs_index[index] + weighted_score
             #print(f'bm25 - index:{index}, score:{score}, weighted_score:{weighted_score}')
@@ -249,12 +260,7 @@ class AskQuestions:
                         # 유사도 점수상 최소한의 수치는 나와야 관련성이 있다고 판단
                         if already_exist == False and (doc.metadata['score'] <= VECTORDB_SCORE_CUTOFF or doc.metadata['bm25_score'] > BM25_SCORE_CUTOFF):
                             retrieved_doc_list.append(doc)
-                            break                            
-        
-        # 메모리 해제
-        del dense_retrieved_docs
-        del bm25_retrieved_scores
-        gc.collect()
+                            break
         
         return GraphState(retrieved_docs=retrieved_doc_list)
         
@@ -322,6 +328,7 @@ class AskQuestions:
     
     
     # 검색되어 선택된 판례문서의 모든 조각을 가져와서 모두 합쳐 다음 노드로 넘긴다
+    #@profile
     def merge_retrieved_all_document(self, state: GraphState) -> GraphState:
         retrieved_docs = state["retrieved_docs"]
         
@@ -552,6 +559,7 @@ class AskQuestions:
         
 
     # LLM을 사용하여 답변을 생성
+    #@profile
     def llm_answer(self, state: GraphState) -> GraphState:
         question = state["question"]
         context = state["context"]
@@ -562,7 +570,7 @@ class AskQuestions:
         with get_openai_callback() as cb:
             
             #prompt = hub.pull('rlm/rag-prompt')
-           # prompt = ChatPromptTemplate.from_template(
+            #prompt = ChatPromptTemplate.from_template(
 #You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know. Use three sentences maximum and keep the answer concise.
 #"""
 #You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know. Add relevant laws in context as bullet points. Additionally, explain how you will respond. Answer in Korean.
@@ -598,10 +606,8 @@ class AskQuestions:
         
     
     # 구현된 node 와 edge 로 workflow 정의
+    #@profile
     def build_workflow_rag(self):
-        # 메모리 해제
-        gc.collect()
-        
         # langgraph.graph에서 StateGraph와 END를 가져옵니다.
         workflow = StateGraph(GraphState)
         
@@ -657,14 +663,14 @@ class AskQuestions:
             recursion_limit=12, configurable={"thread_id": "search_precedents"}
         )
         
-    
+    #@profile
     def run_workflow(self, inputs: GraphState):
         answer = ""
         relevance = False
         vectordb_choice = {}
         etc_relevant_precs = []
         
-        # 가비지 컬렉션 반드시 해줘야 한다. 지금 사용하고 있는 cloudtype 의 메모리가 1GB 인데, BM25 tokenizer 때문에 거의 1G 를 다 사용해서 간당간당하다.
+        # 가비지 컬렉션 반드시 해줘야 한다. 지금 사용하고 있는 cloudtype 의 메모리가 1GB 인데, kiwi 가 상다히 용량을 많이 차지하는 관계로 조금이라도 관리가 필요하다.
         del self.store
         gc.collect()
         
@@ -704,7 +710,7 @@ class AskQuestions:
         # relevance, vectordb_choice, etc_relevant_precs 도 넘겨야한다. 그래야 frontend 에서 링크를 걸어줄수 있다. 
         return answer, relevance, vectordb_choice, etc_relevant_precs
         
-        
+    #@profile
     def question(self, question, filter) -> dict:
         self.case_type = filter
         
@@ -723,6 +729,7 @@ class AskQuestions:
     # 지표누리(e-나라지표) openAPI 를 사용하여 통계 그래프를 보여준다.
     # 질문+답변 내용을 지표명과 bm25 retriever 로 비교하여 가장 관련있어 보이는 통례를 보여 준다.
     # 사건종류:형사
+    #@profile
     def statistics_criminal(self, context) -> List[str]:
         '''
         index_list = [
@@ -784,9 +791,10 @@ class AskQuestions:
             ]
         '''
         
-        bm25_retrieved_scores = get_bm25_scores_from_str_list(index_list, context)
+        bm25_retrieved_scores = get_bm25_scores_from_str_list(self.kiwi, index_list, context)
         #print(f"statistics_criminal - bm25_retrieved_scores: {bm25_retrieved_scores}\n")
         urls = get_index_url(self.index_go_kr_key, bm25_retrieved_scores[0][0])
+        
         return urls
         
         """
@@ -934,9 +942,6 @@ class AskQuestions:
     
     
     def build_workflow_advice(self):
-        # 메모리 해제
-        gc.collect()
-        
         workflow = StateGraph(GraphState)
 
         # 노드 추가
@@ -1002,9 +1007,6 @@ class AskQuestions:
     
     
     def build_workflow_write_paper_1(self):
-        # 메모리 해제
-        gc.collect()
-        
         workflow = StateGraph(GraphState)
 
         # 노드 추가
@@ -1088,9 +1090,6 @@ class AskQuestions:
     
     
     def build_workflow_write_paper_2(self):
-        # 메모리 해제
-        gc.collect()
-        
         workflow = StateGraph(GraphState)
 
         # 노드 추가
@@ -1245,9 +1244,6 @@ class AskQuestions:
     
     
     def build_workflow_write_paper_4(self):
-        # 메모리 해제
-        gc.collect()
-        
         workflow = StateGraph(GraphState)
 
         # 노드 추가
@@ -1394,9 +1390,6 @@ class AskQuestions:
     
     
     def build_workflow_write_paper_5(self):
-        # 메모리 해제
-        gc.collect()
-        
         workflow = StateGraph(GraphState)
 
         # 노드 추가
@@ -1539,9 +1532,6 @@ class AskQuestions:
     
     
     def build_workflow_write_paper_6(self):
-        # 메모리 해제
-        gc.collect()
-        
         workflow = StateGraph(GraphState)
 
         # 노드 추가

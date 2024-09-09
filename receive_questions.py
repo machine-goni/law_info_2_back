@@ -6,11 +6,12 @@ from ask_questions_experimetal import AskQuestions
 class RecvQuestions:
     def __init__(self):
         self.ask_instance = None
+        self.init()
     
     
     def init(self) -> bool:
         if self.ask_instance == None:
-            self.ask_instance = AskQuestions()            
+            self.ask_instance = AskQuestions()
 
         return True
     
