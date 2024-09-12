@@ -10,18 +10,23 @@ from pydantic import BaseModel
 from receive_questions import RecvQuestions
 import json
 
+import atexit   # 프로그램 종료시 호출을 위해
+#import signal
+#import sys
+
 '''
 POST 메세지를 받을 클래스. FastAPI 에서는 이걸 model 이라고 부른다.
 클래는 안의 변수는 메세지로 받을 param 이다.
 '''
-class Workflow_type(BaseModel):
-    workflow_type : str
+#class Workflow_type(BaseModel):
+#    workflow_type : str
 
 class User_inputs(BaseModel):
     question : str
     case_type : str
     
 class User_inputs_advice(BaseModel):
+    dialogue_session_id: str
     is_post_conversation : bool
     status : str
     question : str
@@ -54,6 +59,7 @@ class User_inputs_paper_2(BaseModel):
     appendix : str
     
 class User_inputs_paper_4(BaseModel):
+    dialogue_session_id: str
     is_post_conversation : bool
     sender_name : str
     receiver_name : str
@@ -69,6 +75,7 @@ class User_inputs_paper_4(BaseModel):
     add_info : str
     
 class User_inputs_paper_5(BaseModel):
+    dialogue_session_id: str
     is_post_conversation : bool
     sender_name : str
     receiver_name : str
@@ -84,6 +91,7 @@ class User_inputs_paper_5(BaseModel):
     add_info : str
     
 class User_inputs_paper_6(BaseModel):
+    dialogue_session_id: str
     is_post_conversation : bool
     sender_name : str
     receiver_name : str
@@ -101,6 +109,24 @@ app = FastAPI()
 # backend main code 로 frontend 의 입력을 전달할 receiver
 receiver = RecvQuestions()
 
+# 프로그램 종료 시 호출
+def on_exit():
+    print("프로그램 종료 중...")
+    if receiver != None:
+        receiver.stop_timer()
+
+atexit.register(on_exit)        # on_exit 등록
+'''
+# KeyboardInterrupt 예외 처리
+def signal_handler(sig, frame):
+    print("Ctrl + C 감지됨")
+    on_exit()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+'''
+
+
 '''
 FastAPI instance 로 REST API 를 정의 한다.
 @app.post("/init") 안의 "/init" 는 route
@@ -113,14 +139,14 @@ def operate():
     
     return result
 
-
+'''
 @app.post("/build")
 def operate(input:Workflow_type):
     result = receiver.build_workflow(input.workflow_type)
     #print(f"/build: {result}")
 
     return result
-
+'''
 
 # 판례검색과 질문
 @app.post("/question")
@@ -135,7 +161,7 @@ def operate(input:User_inputs):
 # 법률 조언
 @app.post("/advice")
 def operate(input:User_inputs_advice):
-    result = receiver.advice(input.is_post_conversation, input.status, input.question, input.add_info)
+    result = receiver.advice(input.dialogue_session_id, input.is_post_conversation, input.status, input.question, input.add_info)
     #print(f"/advice - {input.question}: \n{result}")
     
     # 보내기 직전에 json 으로 변환시킨다
@@ -168,7 +194,7 @@ def operate(input:User_inputs_paper_2):
 # 서류작성 - 답변서
 @app.post("/write-paper-4")
 def operate(input:User_inputs_paper_4):
-    result = receiver.write_paper_4(input.is_post_conversation, input.sender_name, input.receiver_name, \
+    result = receiver.write_paper_4(input.dialogue_session_id, input.is_post_conversation, input.sender_name, input.receiver_name, \
         input.case_no, input.case_name, input.case_purpose, input.case_cause, input.case_prove, input.case_appendix, input.case_court, \
         input.rebut, input.appendix, input.add_info)
     
@@ -179,7 +205,7 @@ def operate(input:User_inputs_paper_4):
 # 서류작성 - 고소장
 @app.post("/write-paper-5")
 def operate(input:User_inputs_paper_5):
-    result = receiver.write_paper_5(input.is_post_conversation, input.sender_name, input.receiver_name, \
+    result = receiver.write_paper_5(input.dialogue_session_id, input.is_post_conversation, input.sender_name, input.receiver_name, \
         input.receiver_etc, input.purpose, input.crime_time, input.crime_history, input.damage, input.reason, input.evidence, \
         input.etc_accuse, input.station, input.add_info)
     
@@ -190,7 +216,7 @@ def operate(input:User_inputs_paper_5):
 # 서류작성 - (민사)소장
 @app.post("/write-paper-6")
 def operate(input:User_inputs_paper_6):
-    result = receiver.write_paper_6(input.is_post_conversation, input.sender_name, input.receiver_name, \
+    result = receiver.write_paper_6(input.dialogue_session_id, input.is_post_conversation, input.sender_name, input.receiver_name, \
         input.case_name, input.purpose, input.reason, input.evidence, \
         input.court, input.add_info)
     

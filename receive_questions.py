@@ -16,6 +16,11 @@ class RecvQuestions:
         return True
     
     
+    def stop_timer(self):
+        self.ask_instance.stop_timer()
+    
+    
+    '''
     def build_workflow(self, workflow_type) -> str:
         result = None
         if workflow_type == "rag":
@@ -41,7 +46,7 @@ class RecvQuestions:
             result = "write_paper_6"
             
         return result
-
+    '''
 
     def question(self, question, case_type) -> dict:
         #answer = self.ask_instance.question(question, case_type)
@@ -69,8 +74,8 @@ class RecvQuestions:
         return result_data
     
     
-    def advice(self, is_post_conversation, status, question, add_info) -> dict:
-        result = self.ask_instance.advice(is_post_conversation, status, question, add_info)
+    def advice(self, dialogue_session_id, is_post_conversation, status, question, add_info) -> dict:
+        result = self.ask_instance.advice(dialogue_session_id, is_post_conversation, status, question, add_info)
             
         result_data = {}
         result_data["answer"] = result.get("answer")
@@ -110,12 +115,12 @@ class RecvQuestions:
         return result_data
     
     
-    def write_paper_4(self, is_post_conversation, \
+    def write_paper_4(self, dialogue_session_id, is_post_conversation, \
         sender_name, receiver_name, \
         case_no, case_name, case_purpose, case_cause, case_prove, case_appendix, case_court, \
         rebut, appendix, add_info) -> dict:
         
-        result = self.ask_instance.write_paper_4(is_post_conversation, \
+        result = self.ask_instance.write_paper_4(dialogue_session_id, is_post_conversation, \
             sender_name, receiver_name, \
             case_no, case_name, case_purpose, case_cause, case_prove, case_appendix, case_court, \
             rebut, appendix, add_info)
@@ -126,12 +131,12 @@ class RecvQuestions:
         return result_data
     
     
-    def write_paper_5(self, is_post_conversation, \
+    def write_paper_5(self, dialogue_session_id, is_post_conversation, \
         sender_name, receiver_name, \
         receiver_etc, purpose, crime_time, crime_history, damage, reason, evidence, \
         etc_accuse, station, add_info) -> dict:
         
-        result = self.ask_instance.write_paper_5(is_post_conversation, \
+        result = self.ask_instance.write_paper_5(dialogue_session_id, is_post_conversation, \
             sender_name, receiver_name, \
             receiver_etc, purpose, crime_time, crime_history, damage, reason, evidence, \
             etc_accuse, station, add_info)
@@ -142,12 +147,12 @@ class RecvQuestions:
         return result_data
     
     
-    def write_paper_6(self, is_post_conversation, \
+    def write_paper_6(self, dialogue_session_id, is_post_conversation, \
         sender_name, receiver_name, \
         case_name, purpose, reason, evidence, \
         court, add_info) -> dict:
         
-        result = self.ask_instance.write_paper_6(is_post_conversation, \
+        result = self.ask_instance.write_paper_6(dialogue_session_id, is_post_conversation, \
             sender_name, receiver_name, \
             case_name, purpose, reason, evidence, \
             court, add_info)

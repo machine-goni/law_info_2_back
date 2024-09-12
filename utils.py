@@ -11,6 +11,7 @@ from rank_bm25 import BM25Okapi
 import gc
 #from memory_profiler import profile
 #import sys  # 레퍼런스 카운트를 보려면
+import threading    # 타이머 돌리려면
 
 
 # 유사도 점수를 얻기 위해 만든 함수. chain 으로 wrapping 되어있어 chain.invoke() 를 통해서 실행된다.
@@ -103,6 +104,19 @@ def get_bm25_scores_from_str_list(kiwi: Kiwi, docs: List[str], query: str) -> li
     gc.collect()
         
     return sorted(ordered_score_index.items(), key=lambda x: x[1], reverse=True)
+
+
+def start_timer(callback) -> threading.Timer:
+    def timer_callback():
+        callback()
+        start_timer(callback)  # 타이머를 다시 시작
+    
+    per_hour = 3    # 3시간 마다 콜백
+    dialog_store_timer = threading.Timer(per_hour * 60 * 60, timer_callback)
+    dialog_store_timer.daemon = True  # 타이머를 데몬 스레드로 설정. 이렇게 하면 메인프로그램이 종료되면 타이머도 자동으로 종료된다.
+    dialog_store_timer.start()
+    
+    return dialog_store_timer
 
 
 def format_docs(docs):

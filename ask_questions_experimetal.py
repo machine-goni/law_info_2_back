@@ -55,7 +55,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from GraphState import GraphState
 from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
-from utils import retriever_with_score, get_bm25_scores, get_bm25_scores_from_str_list, format_docs, format_searched_docs, pretty_print, get_index_url, get_prompts_by_casetype
+from utils import retriever_with_score, get_bm25_scores, get_bm25_scores_from_str_list, start_timer, format_docs, format_searched_docs, pretty_print, get_index_url, get_prompts_by_casetype
 from operator import itemgetter
 import pprint
 from langgraph.errors import GraphRecursionError
@@ -95,12 +95,46 @@ class AskQuestions:
             self.llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0.1)
             
         self.case_type = ""
-        self.store = {}     # 세션 기록(대화 히스토리)을 저장할 딕셔너리
+        self.store = {}             # 세션 기록(대화 히스토리)을 저장할 딕셔너리
         
         # kiwi 인스턴스 자체가 용량을 상당히 많이 차지하고, 형태소 분석을 하게되면 인스턴스 해제를 한다고 해도
         # 메모리가 완전히 반환되지 않는다(라이브러리 문제인듯). 그래서 새로 만들때마다 메모리를 계속 차지하기 때문에
         # 그때 그때 쓰고 지우는 방식은 소용이 없다. 그래서 member 로 두고 사용한다.
         self.kiwi = None
+        
+        # 타이머 시작
+        self.dialog_store_timer = start_timer(self.clean_up_dialog_store)
+        
+    
+    # 사실 이함수는 의미가 없다. 프로그램 종료시 타이머를 종료시키기 위함이지만 timer.daemon = True 와 같이 데몬스레드로 설정하면 타이머는 프로그램과 생명을 같이한다.
+    def stop_timer(self):
+        if self.dialog_store_timer != None:
+            self.dialog_store_timer.cancel()
+            
+            
+    # 주기적으로 self.store 를 정리한다.
+    def clean_up_dialog_store(self):
+        store_len = len(self.store)
+        #print(f"length store - before: {store_len}")
+        
+        # 지금으로 부터 1시간 이전의 대화 인스턴스는 지워준다.
+        if store_len > 0:       
+            now = datetime.datetime.now()
+            one_hour_ago = now - datetime.timedelta(hours=1)
+            ago_timestamp = one_hour_ago.timestamp()
+            
+            # 그냥 지워버리면 딕셔너리 사이즈가 달라져서 에러가 나기때문에 지울것들만 뽑는다.
+            keys_to_delete = []
+            
+            for k, _ in self.store.items():
+                dialog_time = float(k)
+                if type(dialog_time) == float and dialog_time < ago_timestamp:
+                    keys_to_delete.append(k)
+            
+            for k in keys_to_delete:
+                del(self.store[k])
+                
+            #print(f"length store - after: {len(self.store)}")
         
         
     # -- node 가 될 함수들 (langgraph 에서 node 는 GraphState 를 받고 GraphState 를 넘겨줘야 한다) --
@@ -650,9 +684,7 @@ class AskQuestions:
 
         # Checkpointer: 각 노드간 실행결과 추적하기 위한 메모리(대화에 대한 기록과 유사 개념)
         # 체크포인터를 활용해 특정 시점(Snapshot)으로 되돌리기 기능도 가능
-        # 기록 위한 메모리 저장소 설정
-        memory = MemorySaver()
-        self.app = workflow.compile(checkpointer=memory)
+        self.app = workflow.compile(checkpointer=MemorySaver())
         #app = workflow.compile() # 설정을 안해도 되긴 하는듯
         
         # config 설정 안해주면 에러난다
@@ -660,7 +692,7 @@ class AskQuestions:
         # 만약에 5개의 노드가 돌고 돌아 3번씩 실행하게 되면 최소 15개는 되야 한다는 뜻이다.
         # thread_id: 그래프 실행 아이디 기록하고, 추후 추적 목적으로 활용
         self.config = RunnableConfig(
-            recursion_limit=12, configurable={"thread_id": "search_precedents"}
+            recursion_limit=12, configurable={"thread_id": "search_precedents"}            
         )
         
     #@profile
@@ -670,12 +702,7 @@ class AskQuestions:
         vectordb_choice = {}
         etc_relevant_precs = []
         
-        # 가비지 컬렉션 반드시 해줘야 한다. 지금 사용하고 있는 cloudtype 의 메모리가 1GB 인데, kiwi 가 상다히 용량을 많이 차지하는 관계로 조금이라도 관리가 필요하다.
-        del self.store
         gc.collect()
-        
-        # 대화내역 리셋.
-        self.store = {}
         
         # app.stream을 통해 입력된 메시지에 대한 출력을 스트리밍합니다.
         try:
@@ -717,7 +744,8 @@ class AskQuestions:
         # AgentState 객체를 활용하여 질문을 입력합니다.
         inputs = GraphState(question=question, filter=filter)
         
-        #answer = self.run_workflow(inputs)
+        self.build_workflow_rag()
+        
         answer, relevance, vectordb_choice, etc_relevant_precs = self.run_workflow(inputs)
         
         result_dict = {"answer":answer, "relevance":relevance, "vectordb_choice":vectordb_choice, "etc_relevant_precs":etc_relevant_precs}    
@@ -847,7 +875,8 @@ class AskQuestions:
         paper_content = state["paper_content"]
         paper_content["post_conversation"] = post_conversation
         response = None
-        session_id = "법률조언"
+        session_id = state["dialogue_session_id"]
+        #print(f"llm_answer - session_id: {session_id}")
         
         with get_openai_callback() as cb:
             # context 로 넘기기위해 입력받은 정보를 합쳐 하나의 문자열로 만든다.
@@ -929,9 +958,8 @@ class AskQuestions:
                     config={"configurable": {"session_id": session_id}}   # 세션 ID 기준으로 대화를 기록
                     )
                 
-                # 추가 대화까지 완료되었다면 대화기록을 삭제한다. 그래야 다음에 쓸데없이 불러오지않지..
+                # 추가 대화까지 완료되었다면 대화기록을 삭제한다. 이 대화는 여기까지이기 때문에..
                 del(self.store[session_id])
-                self.store = {}
                 
             
             #print('result:', response)
@@ -953,17 +981,19 @@ class AskQuestions:
         # 시작 노드
         workflow.set_entry_point("llm_answer")
 
-        memory = MemorySaver()
-        self.app = workflow.compile(checkpointer=memory)
+        self.app = workflow.compile(checkpointer=MemorySaver())
         
         self.config = RunnableConfig(
             recursion_limit=12, configurable={"thread_id": "search_precedents"}
         )
         
     
-    def advice(self, is_post_conversation, status, question, add_info) -> dict:
+    def advice(self, dialogue_session_id, is_post_conversation, status, question, add_info) -> dict:
         paper_content = {"status": status, "question": question, "add_info": add_info}
-        inputs = GraphState(paper_content=paper_content, post_conversation=is_post_conversation)
+        inputs = GraphState(dialogue_session_id=dialogue_session_id, paper_content=paper_content, post_conversation=is_post_conversation)
+        
+        # 한번의 요청에 관련처리를 한꺼번에 하기위해 build_workflow_advice 를 외부 인터페이스 연결 메서드 안으로 옮긴다.
+        self.build_workflow_advice()
         
         answer, _, _, _ = self.run_workflow(inputs)
         
@@ -1018,8 +1048,7 @@ class AskQuestions:
         # 시작 노드
         workflow.set_entry_point("llm_answer")
 
-        memory = MemorySaver()
-        self.app = workflow.compile(checkpointer=memory)
+        self.app = workflow.compile(checkpointer=MemorySaver())
         
         self.config = RunnableConfig(
             recursion_limit=12, configurable={"thread_id": "search_precedents"}
@@ -1029,6 +1058,8 @@ class AskQuestions:
     def write_paper_1(self, reason, fact, ask, point, receiver, sender, phone, appendix, style) -> dict:
         paper_content = {"reason": reason, "fact": fact, "ask": ask, "point": point, "receiver": receiver, "sender": sender, "phone": phone, "appendix":appendix, "style": style}
         inputs = GraphState(paper_content=paper_content)
+        
+        self.build_workflow_write_paper_1()
         
         answer, _, _, _ = self.run_workflow(inputs)
         
@@ -1101,8 +1132,7 @@ class AskQuestions:
         # 시작 노드
         workflow.set_entry_point("llm_answer")
 
-        memory = MemorySaver()
-        self.app = workflow.compile(checkpointer=memory)
+        self.app = workflow.compile(checkpointer=MemorySaver())
         
         self.config = RunnableConfig(
             recursion_limit=12, configurable={"thread_id": "search_precedents"}
@@ -1125,6 +1155,8 @@ class AskQuestions:
             "ask_reason": ask_reason, "ask_reason_detail": ask_reason_detail, "appendix": appendix}
         inputs = GraphState(paper_content=paper_content)
         
+        self.build_workflow_write_paper_2()
+        
         answer, _, _, _ = self.run_workflow(inputs)
         
         result_dict = {"answer":answer}
@@ -1138,7 +1170,7 @@ class AskQuestions:
         paper_content = state["paper_content"]
         paper_content["post_conversation"] = post_conversation
         response = None
-        session_id = "답변서"
+        session_id = state["dialogue_session_id"]
         
         with get_openai_callback() as cb:
             # context 로 넘기기위해 입력받은 정보를 합쳐 하나의 문자열로 만든다.
@@ -1233,7 +1265,7 @@ class AskQuestions:
                 
                 # 추가 대화까지 완료되었다면 대화기록을 삭제한다. 그래야 다음에 쓸데없이 불러오지않지..
                 del(self.store[session_id])
-                self.store = {}
+                #self.store = {}
                 
             
             #print('result:', response)
@@ -1255,15 +1287,14 @@ class AskQuestions:
         # 시작 노드
         workflow.set_entry_point("llm_answer")
 
-        memory = MemorySaver()
-        self.app = workflow.compile(checkpointer=memory)
+        self.app = workflow.compile(checkpointer=MemorySaver())
         
         self.config = RunnableConfig(
             recursion_limit=12, configurable={"thread_id": "search_precedents"}
         )
         
     
-    def write_paper_4(self, is_post_conversation, \
+    def write_paper_4(self, dialogue_session_id, is_post_conversation, \
         sender_name, receiver_name, \
         case_no, case_name, case_purpose, case_cause, case_prove, case_appendix, case_court, \
         rebut, appendix, add_info) -> dict:
@@ -1271,7 +1302,9 @@ class AskQuestions:
         paper_content = {"sender_name": sender_name, "receiver_name": receiver_name, \
             "case_no": case_no, "case_name": case_name, "case_purpose": case_purpose, "case_cause": case_cause, "case_prove": case_prove, "case_appendix": case_appendix, "case_court": case_court, \
             "rebut": rebut, "appendix": appendix, "add_info": add_info}
-        inputs = GraphState(paper_content=paper_content, post_conversation=is_post_conversation)
+        inputs = GraphState(dialogue_session_id=dialogue_session_id, paper_content=paper_content, post_conversation=is_post_conversation)
+        
+        self.build_workflow_write_paper_4()
         
         answer, _, _, _ = self.run_workflow(inputs)
         
@@ -1286,7 +1319,7 @@ class AskQuestions:
         paper_content = state["paper_content"]
         paper_content["post_conversation"] = post_conversation
         response = None
-        session_id = "고소장"
+        session_id = state["dialogue_session_id"]
         
         with get_openai_callback() as cb:
             # context 로 넘기기위해 입력받은 정보를 합쳐 하나의 문자열로 만든다.
@@ -1379,7 +1412,7 @@ class AskQuestions:
                 
                 # 추가 대화까지 완료되었다면 대화기록을 삭제한다. 그래야 다음에 쓸데없이 불러오지않지..
                 del(self.store[session_id])
-                self.store = {}
+                #self.store = {}
                 
             
             #print('result:', response)
@@ -1401,15 +1434,14 @@ class AskQuestions:
         # 시작 노드
         workflow.set_entry_point("llm_answer")
 
-        memory = MemorySaver()
-        self.app = workflow.compile(checkpointer=memory)
+        self.app = workflow.compile(checkpointer=MemorySaver())
         
         self.config = RunnableConfig(
             recursion_limit=12, configurable={"thread_id": "search_precedents"}
         )
         
     
-    def write_paper_5(self, is_post_conversation, \
+    def write_paper_5(self, dialogue_session_id, is_post_conversation, \
         sender_name, receiver_name, \
         receiver_etc, purpose, crime_time, crime_history, damage, reason, evidence, \
         etc_accuse, station, add_info) -> dict:
@@ -1417,7 +1449,9 @@ class AskQuestions:
         paper_content = {"sender_name": sender_name, "receiver_name": receiver_name, \
             "receiver_etc": receiver_etc, "purpose": purpose, "crime_time": crime_time, "crime_history": crime_history, "damage": damage, "reason": reason, "evidence": evidence, \
             "etc_accuse": etc_accuse, "station": station, "add_info": add_info}
-        inputs = GraphState(paper_content=paper_content, post_conversation=is_post_conversation)
+        inputs = GraphState(dialogue_session_id=dialogue_session_id, paper_content=paper_content, post_conversation=is_post_conversation)
+        
+        self.build_workflow_write_paper_5()
         
         answer, _, _, _ = self.run_workflow(inputs)
         
@@ -1432,7 +1466,7 @@ class AskQuestions:
         paper_content = state["paper_content"]
         paper_content["post_conversation"] = post_conversation
         response = None
-        session_id = "민사소장"
+        session_id = state["dialogue_session_id"]
         
         with get_openai_callback() as cb:
             # context 로 넘기기위해 입력받은 정보를 합쳐 하나의 문자열로 만든다.
@@ -1521,7 +1555,7 @@ class AskQuestions:
                 
                 # 추가 대화까지 완료되었다면 대화기록을 삭제한다. 그래야 다음에 쓸데없이 불러오지않지..
                 del(self.store[session_id])
-                self.store = {}
+                #self.store = {}
                 
             
             #print('result:', response)
@@ -1543,15 +1577,14 @@ class AskQuestions:
         # 시작 노드
         workflow.set_entry_point("llm_answer")
 
-        memory = MemorySaver()
-        self.app = workflow.compile(checkpointer=memory)
+        self.app = workflow.compile(checkpointer=MemorySaver())
         
         self.config = RunnableConfig(
             recursion_limit=12, configurable={"thread_id": "search_precedents"}
         )
         
     
-    def write_paper_6(self, is_post_conversation, \
+    def write_paper_6(self, dialogue_session_id, is_post_conversation, \
         sender_name, receiver_name, \
         case_name, purpose, reason, evidence, \
         court, add_info) -> dict:
@@ -1559,12 +1592,13 @@ class AskQuestions:
         paper_content = {"sender_name": sender_name, "receiver_name": receiver_name, \
             "case_name": case_name, "purpose": purpose, "reason": reason, "evidence": evidence, \
             "court": court, "add_info": add_info}
-        inputs = GraphState(paper_content=paper_content, post_conversation=is_post_conversation)
+        inputs = GraphState(dialogue_session_id=dialogue_session_id, paper_content=paper_content, post_conversation=is_post_conversation)
+        
+        self.build_workflow_write_paper_6()
         
         answer, _, _, _ = self.run_workflow(inputs)
         
         result_dict = {"answer":answer}
         
         return result_dict
-    
     

@@ -17,3 +17,4 @@ class GraphState(TypedDict):
     
     paper_content: dict             # 서류작성 입력사항
     post_conversation: bool         # 이어지는 대화인가?
+    dialogue_session_id: str        # 대화 히스토리 ID
