@@ -36,7 +36,7 @@ def _retriever_with_score(query: str, vectorstore: PineconeVectorStore, k: int, 
 
 # bm25 와 함께 kiwi 한글형태소 분석기와 유사도 점수를 사용
 #@profile
-def get_bm25_scores(kiwi: Kiwi, docs: List[Document], query: str) -> list:
+async def get_bm25_scores(kiwi: Kiwi, docs: List[Document], query: str) -> list:
     # Kiwi 형태소 분석기 초기화
     #kiwi = Kiwi()
     
@@ -77,7 +77,7 @@ def get_bm25_scores(kiwi: Kiwi, docs: List[Document], query: str) -> list:
     return sorted(ordered_score_index.items(), key=lambda x: x[1], reverse=True)
 
 #@profile
-def get_bm25_scores_from_str_list(kiwi: Kiwi, docs: List[str], query: str) -> list:
+async def get_bm25_scores_from_str_list(kiwi: Kiwi, docs: List[str], query: str) -> list:
     # 문서들을 형태소 분석하여 토큰화
     tokenized_docs = [kiwi.tokenize(doc) for doc in docs]
 

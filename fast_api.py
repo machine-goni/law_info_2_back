@@ -5,7 +5,7 @@ fastapi 는 pip install 로 설치해줘야 하고
 
 # backend 를 FastAPI 로 구현
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from receive_questions import RecvQuestions
 import json
@@ -18,8 +18,6 @@ import atexit   # 프로그램 종료시 호출을 위해
 POST 메세지를 받을 클래스. FastAPI 에서는 이걸 model 이라고 부른다.
 클래는 안의 변수는 메세지로 받을 param 이다.
 '''
-#class Workflow_type(BaseModel):
-#    workflow_type : str
 
 class User_inputs(BaseModel):
     question : str
@@ -45,10 +43,7 @@ class User_inputs_paper_1(BaseModel):
     
 class User_inputs_paper_2(BaseModel):
     sender_name : str
-    #sender_addr : str
-    #sender_phone : str
     receiver_name : str
-    #receiver_addr : str
     court : str
     amount : str
     ask_interest : str
@@ -134,94 +129,116 @@ FastAPI instance 로 REST API 를 정의 한다.
 
 @app.post("/init")
 def operate():
-    result = receiver.init()
-    #print(f"/init: {result}")
+    try:
+        if receiver != None:
+            return True
+        else:
+            return False
     
-    return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-'''
-@app.post("/build")
-def operate(input:Workflow_type):
-    result = receiver.build_workflow(input.workflow_type)
-    #print(f"/build: {result}")
-
-    return result
-'''
 
 # 판례검색과 질문
 @app.post("/question")
-def operate(input:User_inputs):
-    result = receiver.question(input.question, input.case_type)
-    #print(f"/question - {input.question}: \n{result}")
+async def operate(input:User_inputs):
+    try:
+        result = await receiver.question(input.question, input.case_type)
+        #print(f"/question - {input.question}: \n{result}")
+        
+        # 보내기 직전에 json 으로 변환시킨다
+        return json.dumps(result)
     
-    # 보내기 직전에 json 으로 변환시킨다
-    return json.dumps(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 법률 조언
 @app.post("/advice")
-def operate(input:User_inputs_advice):
-    result = receiver.advice(input.dialogue_session_id, input.is_post_conversation, input.status, input.question, input.add_info)
-    #print(f"/advice - {input.question}: \n{result}")
+async def operate(input:User_inputs_advice):
+    try:
+        result = await receiver.advice(input.dialogue_session_id, input.is_post_conversation, input.status, input.question, input.add_info)
+        #print(f"/advice - {input.question}: \n{result}")
+        
+        # 보내기 직전에 json 으로 변환시킨다
+        return json.dumps(result)
     
-    # 보내기 직전에 json 으로 변환시킨다
-    return json.dumps(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 서류작성 - 내용증명
 @app.post("/write-paper-1")
-def operate(input:User_inputs_paper_1):
-    result = receiver.write_paper_1(input.reason, input.fact, input.ask, input.point, input.receiver, input.sender, input.phone, input.appendix, input.style)
+async def operate(input:User_inputs_paper_1):
+    try:
+        result = await receiver.write_paper_1(input.reason, input.fact, input.ask, input.point, input.receiver, input.sender, input.phone, input.appendix, input.style)
+        
+        # 보내기 직전에 json 으로 변환시킨다
+        return json.dumps(result)
     
-    # 보내기 직전에 json 으로 변환시킨다
-    return json.dumps(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 서류작성 - 지급명령신청서
 @app.post("/write-paper-2")
-def operate(input:User_inputs_paper_2):
-    #result = receiver.write_paper_2(input.sender_name, input.sender_addr, input.sender_phone, \
-    #    input.receiver_name, input.receiver_addr, input.court, \
-    result = receiver.write_paper_2(input.sender_name, \
-        input.receiver_name, input.court, \
-        input.amount, input.ask_interest, input.transmittal_fee, input.stamp_fee, \
-        input.ask_reason, input.ask_reason_detail, input.appendix)
+async def operate(input:User_inputs_paper_2):
+    try:
+        result = await receiver.write_paper_2(input.sender_name, \
+            input.receiver_name, input.court, \
+            input.amount, input.ask_interest, input.transmittal_fee, input.stamp_fee, \
+            input.ask_reason, input.ask_reason_detail, input.appendix)
+        
+        # 보내기 직전에 json 으로 변환시킨다
+        return json.dumps(result)
     
-    # 보내기 직전에 json 으로 변환시킨다
-    return json.dumps(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 서류작성 - 답변서
 @app.post("/write-paper-4")
-def operate(input:User_inputs_paper_4):
-    result = receiver.write_paper_4(input.dialogue_session_id, input.is_post_conversation, input.sender_name, input.receiver_name, \
-        input.case_no, input.case_name, input.case_purpose, input.case_cause, input.case_prove, input.case_appendix, input.case_court, \
-        input.rebut, input.appendix, input.add_info)
+async def operate(input:User_inputs_paper_4):
+    try:
+        result = await receiver.write_paper_4(input.dialogue_session_id, input.is_post_conversation, input.sender_name, input.receiver_name, \
+            input.case_no, input.case_name, input.case_purpose, input.case_cause, input.case_prove, input.case_appendix, input.case_court, \
+            input.rebut, input.appendix, input.add_info)
+        
+        # 보내기 직전에 json 으로 변환시킨다
+        return json.dumps(result)
     
-    # 보내기 직전에 json 으로 변환시킨다
-    return json.dumps(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 서류작성 - 고소장
 @app.post("/write-paper-5")
-def operate(input:User_inputs_paper_5):
-    result = receiver.write_paper_5(input.dialogue_session_id, input.is_post_conversation, input.sender_name, input.receiver_name, \
-        input.receiver_etc, input.purpose, input.crime_time, input.crime_history, input.damage, input.reason, input.evidence, \
-        input.etc_accuse, input.station, input.add_info)
+async def operate(input:User_inputs_paper_5):
+    try:
+        result = await receiver.write_paper_5(input.dialogue_session_id, input.is_post_conversation, input.sender_name, input.receiver_name, \
+            input.receiver_etc, input.purpose, input.crime_time, input.crime_history, input.damage, input.reason, input.evidence, \
+            input.etc_accuse, input.station, input.add_info)
+        
+        # 보내기 직전에 json 으로 변환시킨다
+        return json.dumps(result)
     
-    # 보내기 직전에 json 으로 변환시킨다
-    return json.dumps(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # 서류작성 - (민사)소장
 @app.post("/write-paper-6")
-def operate(input:User_inputs_paper_6):
-    result = receiver.write_paper_6(input.dialogue_session_id, input.is_post_conversation, input.sender_name, input.receiver_name, \
-        input.case_name, input.purpose, input.reason, input.evidence, \
-        input.court, input.add_info)
+async def operate(input:User_inputs_paper_6):
+    try:
+        result = await receiver.write_paper_6(input.dialogue_session_id, input.is_post_conversation, input.sender_name, input.receiver_name, \
+            input.case_name, input.purpose, input.reason, input.evidence, \
+            input.court, input.add_info)
+        
+        # 보내기 직전에 json 으로 변환시킨다
+        return json.dumps(result)
     
-    # 보내기 직전에 json 으로 변환시킨다
-    return json.dumps(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # For running the FastAPI server we need to run the following command:
