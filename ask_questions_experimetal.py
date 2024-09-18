@@ -52,6 +52,9 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 # web site url 로 문서 load
 #from langchain_community.document_loaders import WebBaseLoader
 
+# 웹서치 크롤링을 통한 컨텐츠를 파싱해서 사용
+from newspaper import Article
+
 # langgraph 구조에 필요한 패키지들
 from GraphState import GraphState
 from langgraph.graph import END, StateGraph
@@ -65,8 +68,9 @@ from langchain_core.runnables import RunnableConfig, RunnableLambda
 
 
 PINECONE_INDEX_NAME = "search-precedents"
-VECTORDB_SCORE_CUTOFF = 1.2
-BM25_SCORE_CUTOFF = 10.0
+# 현재 아래 2가지 점수 중 하나만 통과하면 관련성있는 것으로 판단한다.(VECTORDB_SCORE_CUTOFF 이하이거나 BM25_SCORE_CUTOFF 이상)
+VECTORDB_SCORE_CUTOFF = 0.9
+BM25_SCORE_CUTOFF = 15.0
 
 
 # LangGraph 구현 및 설명 참조: https://medium.com/@yoony1007/%EB%9E%AD%EC%B2%B4%EC%9D%B8-%EC%BD%94%EB%A6%AC%EC%95%84-%EB%B0%8B%EC%97%85-2024-q2-%ED%85%8C%EB%94%94%EB%85%B8%ED%8A%B8-%EC%B4%88%EB%B3%B4%EC%9E%90%EB%8F%84-%ED%95%A0-%EC%88%98-%EC%9E%88%EB%8A%94-%EA%B3%A0%EA%B8%89-rag-%EB%8B%A4%EC%A4%91-%EC%97%90%EC%9D%B4%EC%A0%84%ED%8A%B8%EC%99%80-langgraph-%EC%A0%9C%EC%9E%91-e8bec8adfef4
@@ -229,6 +233,7 @@ class AskQuestions:
             일반적으로 많이 사용하는 코사인 유사도의 경우, 점수는 -1에서 1 사이의 값을 가지며, 1에 가까울수록 유사도가 높다.
             다른 유사도 측정 방식, 예를 들어 유클리드 거리나 맨해튼 거리의 경우, 점수가 작을수록 유사도가 높다. 
             따라서, 어떤 유사도 측정 방식을 사용하는지에 따라 점수의 해석이 달라질 수 있다. 
+            참고로 이 프로젝트에서 쓰는 VectorDB 는 유클리드 거리를 사용하고 있다. 
 
             BM25의 유사도 점수는 0에서 시작하여 이론적으로는 무한대까지 갈 수 있다. 
             그러나 실제로는 대부분의 점수가 20 이하이며, 최대 100 이내에서 나타나는 경우가 많다.
@@ -501,12 +506,12 @@ class AskQuestions:
         relevance = False
         
         # 유사도 점수가 허용범위 밖이면 웹 서치 진행
-        #print(f"relevance_check - vectordb_score: {state['vectordb_score']}")
-        #print(f"relevance_check - bm25_score: {state['bm25_score']}\n")
+        print(f"relevance_check - vectordb_score: {state['vectordb_score']}\nrelevance_check - bm25_score: {state['bm25_score']}\n")        
         if state["vectordb_score"] <= VECTORDB_SCORE_CUTOFF or state['bm25_score'] > BM25_SCORE_CUTOFF:
             relevance = True
         
-        return GraphState(relevance=relevance)
+        return GraphState(relevance=relevance) # original
+        #return GraphState(relevance=False)      # test
 
 
     def is_relevant(self, state: GraphState) -> GraphState:
@@ -580,7 +585,7 @@ class AskQuestions:
             '''
             
             # 관련 문서: https://api.python.langchain.com/en/latest/tools/langchain_community.tools.tavily_search.tool.TavilySearchResults.html
-            tavily_tool = TavilySearchResults(max_results=5, 
+            tavily_tool = TavilySearchResults(max_results=4, 
                                             search_depth = "advanced",
                                             include_raw_content = False,    # Include cleaned and parsed HTML of each site search results. Default is False.
                                             include_domains=include_domains, 
@@ -594,11 +599,32 @@ class AskQuestions:
             # tavily search 의 무료 이용량은 1000건/월 이다. 이용량이 모두 소진되는 등의 문제가 발행하면 LLM 단계로 직행.
             try:
                 tavily_result = tavily_tool.invoke({"query": state["question"]})
-                search_result = format_searched_docs(tavily_result)
+                #search_result = format_searched_docs(tavily_result)
                 #print(f'tavily result-1: {tavily_result}')
                 #print(f'tavily result-2: {search_result}')
+                
+                # newpaper article
+                max_article_len = 2000
+                article_texts = []
+                for i, doc in enumerate(tavily_result):
+                    article = Article(doc["url"])
+                    article.download()
+                    article.parse()
+                    new_article = f"{doc['content']}. {article.text}"
+                    new_article_2 = None
+                    if len(new_article) > max_article_len:
+                        new_article_2 = new_article[:max_article_len]
+                    else:
+                        new_article_2 = new_article
+                        
+                    article_texts.append(new_article_2)                    
+                    #print(f"\n\narticle_text[{i}]:\n{article.text}")
+                
+                search_result = "\n".join(article_texts)
+                #print(f'tavily result-2: {search_result}')
+                
             except Exception as e:
-                #print(f'search_on_web - Exception: {e}')
+                print(f'search_on_web - Exception: {e}')
                 search_result = ""
             
             return GraphState(context=search_result)
@@ -691,6 +717,8 @@ class AskQuestions:
         # langgraph.graph에서 StateGraph와 END를 가져옵니다.
         workflow = StateGraph(GraphState)
         
+        # original workflow
+        ''''''
         # 노드 정의. 확실히 그 이유인지는 모르지만, 추가만 해놓고 안쓰는 노드가 있으면 에러난다.
         workflow.add_node("retrieve", self.retrieve_document)                   # retrieve 검색 노드 추가
         #workflow.add_node("merge_docs", self.merge_retrieved_document)         # 문서 병합(첫,끝,선택부분) 노드 추가
@@ -718,15 +746,17 @@ class AskQuestions:
         workflow.add_edge("search_on_web", "llm_answer")    # 웹 검색 -> 답변
         workflow.add_edge("llm_answer", END)                # 반드시 마지막으로 'END' 가 와야 한다. 
         
-        # test workflow 
-        '''
-        workflow.add_node("retrieve", self.retrieve_document)
-        workflow.add_edge("retrieve", END)
-        '''
-        
         
         # 시작 노드 설정
         workflow.set_entry_point("retrieve")
+        
+        
+        # test workflow 
+        '''
+        workflow.add_node("search_on_web", self.search_on_web)
+        workflow.add_edge("search_on_web", END)
+        workflow.set_entry_point("search_on_web")
+        '''
 
         # Checkpointer: 각 노드간 실행결과 추적하기 위한 메모리(대화에 대한 기록과 유사 개념)
         # 체크포인터를 활용해 특정 시점(Snapshot)으로 되돌리기 기능도 가능
