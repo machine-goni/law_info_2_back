@@ -584,8 +584,10 @@ class AskQuestions:
             print(f'searched_text:\n{search_result}')
             '''
             
+            tavily_max_result_1 = 6
+            tavily_max_result_2 = 4
             # 관련 문서: https://api.python.langchain.com/en/latest/tools/langchain_community.tools.tavily_search.tool.TavilySearchResults.html
-            tavily_tool = TavilySearchResults(max_results=4, 
+            tavily_tool = TavilySearchResults(max_results=tavily_max_result_1, 
                                             search_depth = "advanced",
                                             include_raw_content = False,    # Include cleaned and parsed HTML of each site search results. Default is False.
                                             include_domains=include_domains, 
@@ -617,8 +619,17 @@ class AskQuestions:
                     else:
                         new_article_2 = new_article
                         
-                    article_texts.append(new_article_2)                    
-                    #print(f"\n\narticle_text[{i}]:\n{article.text}")
+                    #print(f"\n\nnew_article_2[{i}]:\n{new_article_2}")
+                    # 이 부분은 검색된 내용에 A씨, B씨 등과 같이 구체적인 상황 예의 언급을 피하기 위해 넣는다.
+                    # 알파벳 A 나 B가 사람을 지칭하지 않고 들어 갈수도 있기 때문에 A와 B가 함께 들어간 경우만 걸러낸다.
+                    # 프롬프트로 언급을 피하도록 하려고 했으나 GPT 가 알려준 프롬프트로도 해결되지가 않아서 이렇게 처리.
+                    if not (("A" in new_article_2) and ("B" in new_article_2)):                        
+                        article_texts.append(new_article_2)                    
+                        #print(f"added index: {i}, Total: {len(article_texts)}")
+                        
+                    # 위에서 걸러질 수도 있는 상황을 대비해서 필요한것보다 좀더 검색했기 때문에 필요한만큼 모아지면 끝낸다.
+                    if len(article_texts) >= tavily_max_result_2:
+                        break
                 
                 search_result = "\n".join(article_texts)
                 #print(f'tavily result-2: {search_result}')
