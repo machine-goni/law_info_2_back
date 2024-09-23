@@ -69,7 +69,7 @@ from langchain_core.runnables import RunnableConfig, RunnableLambda
 
 PINECONE_INDEX_NAME = "search-precedents"
 # 현재 아래 2가지 점수 중 하나만 통과하면 관련성있는 것으로 판단한다.(VECTORDB_SCORE_CUTOFF 이하이거나 BM25_SCORE_CUTOFF 이상)
-VECTORDB_SCORE_CUTOFF = 0.9
+VECTORDB_SCORE_CUTOFF = 1.0 #0.9
 BM25_SCORE_CUTOFF = 15.0
 
 
@@ -264,6 +264,7 @@ class AskQuestions:
                 weighted_score = (nearest_k - i) * weights[0]
                 index = doc.metadata['chunk_index']
                 weighted_docs_index[index] = weighted_score
+                #print(f'vector db - index:{index}, score:{doc.metadata["score"]}, weighted_score:{weighted_score}')
                 
                 # bm25_score 도 메타데이터로 넣어논다
                 for chunk_i, bm25_score in bm25_retrieved_scores:
@@ -271,11 +272,10 @@ class AskQuestions:
                         doc.metadata['bm25_score'] = bm25_score
                         break
                     
-            #print(f'weighted_docs_index_1(dense): {weighted_docs_index}\n')
+            #print('\n')
             
             # 목록 내용과 총개수는 같으니 순위에 따라 가중치를 업데이트 해준다
-            #for i, (index, score) in enumerate(bm25_retrieved_scores): # test
-            for i, (index, _) in enumerate(bm25_retrieved_scores):      # original
+            for i, (index, score) in enumerate(bm25_retrieved_scores):
                 weighted_score = (nearest_k - i) * weights[1]
                 weighted_docs_index[index] = weighted_docs_index[index] + weighted_score
                 #print(f'bm25 - index:{index}, score:{score}, weighted_score:{weighted_score}')
@@ -285,9 +285,25 @@ class AskQuestions:
             sorted_docs_index = sorted(weighted_docs_index.items(), key=lambda x: x[1], reverse=True)
             #print(f'\nweighted_docs_index_2(dense+bm25): {weighted_docs_index}\n')
             #print(f'sorted_weight_docs_index: {sorted_docs_index}\n')
-            #print(f"** ALL **\n{dense_retrieved_docs}")
+            #print(f"** ALL **\n{dense_retrieved_docs}\n")
             
-            retrieved_doc_list = []     # context 로 사용할 최고 (앙상블)점수 문서와 2,3위 문서를 담을 리스트
+            
+            # 원래 용도: context 로 사용할 최고 (앙상블)점수 문서와 2,3위 문서를 담을 리스트.
+            # 원래는 위와 같이 사용하려고 했으나 별의미도 없고 응답시간만 지체하게 되어서 그냥 최상위 1개만 사용하는 것으로 수정.
+            retrieved_doc_list = []
+            
+            selected_index = str(sorted_docs_index[0][0])
+            # 나중에 relevance_check 노드가 있지만 수정을 하면서 구조는 그대로 두려고 여기서 점수체크를 하고 범위 밖이면 그냥 빈 리스트를 보낸다.
+            for doc in dense_retrieved_docs:                        
+                if str(doc.metadata['chunk_index']) == selected_index:
+                    #print(f'selected_index - index:{selected_index}, vector db score:{doc.metadata["score"]}, bm25 score:{doc.metadata["bm25_score"]}\n')
+                    if doc.metadata['score'] <= VECTORDB_SCORE_CUTOFF or doc.metadata['bm25_score'] > BM25_SCORE_CUTOFF:
+                        retrieved_doc_list.append(doc)                        
+                        
+                    break
+            
+            """
+            # 위에서 설명한 원래의 용도 코드. 1,2,3 순위의 문서를 뽑는 목적이였다.
             for chunk_index, _ in sorted_docs_index:    # sorted_docs_index 는 tuple list 이며, [0]: chunk index, [1]: ensemble score 이다
                 if len(retrieved_doc_list) == 3:    # 최대 3개까지만 골라낸다
                     break
@@ -310,7 +326,9 @@ class AskQuestions:
                             if already_exist == False and (doc.metadata['score'] <= VECTORDB_SCORE_CUTOFF or doc.metadata['bm25_score'] > BM25_SCORE_CUTOFF):
                                 retrieved_doc_list.append(doc)
                                 break
+            """
             
+            #print(f'retrieved_docs:\n{retrieved_doc_list}')
             return GraphState(retrieved_docs=retrieved_doc_list)
         
     
@@ -374,7 +392,7 @@ class AskQuestions:
                 return GraphState(vectordb_score=vectorDB_score, bm25_score=bm25_score, context=context_doc, etc_relevant_precs=etc_prec_numbers)
             
             else:
-                return GraphState(vectordb_score=0)
+                return GraphState(vectordb_score=VECTORDB_SCORE_CUTOFF+1, bm25_score=BM25_SCORE_CUTOFF-1)
     
     
     # 검색되어 선택된 판례문서의 모든 조각을 가져와서 모두 합쳐 다음 노드로 넘긴다
@@ -499,7 +517,8 @@ class AskQuestions:
                 return GraphState(vectordb_score=vectorDB_score, bm25_score=bm25_score, context=context_doc, vectordb_choice=content_dict_2, etc_relevant_precs=etc_prec_numbers)
                 
             else:
-                return GraphState(vectordb_score=0)
+                # 관련성이 없어 리스트가 비었을땐 무조건 허용치를 벗어나도록
+                return GraphState(vectordb_score=VECTORDB_SCORE_CUTOFF+1, bm25_score=BM25_SCORE_CUTOFF-1)
 
     
     def relevance_check(self, state: GraphState) -> GraphState:
