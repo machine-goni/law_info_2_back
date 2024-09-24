@@ -12,6 +12,7 @@ import gc
 #from memory_profiler import profile
 #import sys  # 레퍼런스 카운트를 보려면
 import threading    # 타이머 돌리려면
+import re           # 정규식으로 문자열을 찾으려면
 
 
 # 유사도 점수를 얻기 위해 만든 함수. chain 으로 wrapping 되어있어 chain.invoke() 를 통해서 실행된다.
@@ -117,6 +118,103 @@ def start_timer(callback) -> threading.Timer:
     dialog_store_timer.start()
     
     return dialog_store_timer
+
+
+# law_index - 0:민법, 1:형법, 2:근로기준법
+def search_provisions(law_list:list, law_index:int, provision_name:str) -> str:
+    df_law = law_list[law_index]
+    provision_name = provision_name.replace(" ", "")    # 공백 제거
+    provision = df_law[df_law['key'] == provision_name]
+    
+    category = None
+    if law_index == 0:
+        category = "민법"
+    elif law_index == 1:
+        category = "형법"
+    elif law_index == 2:
+        category = "근로기준법"
+        
+    text = provision.iloc[0,1]
+    
+    # 정규표현식 패턴으로 안넣어도 될 것 같은건 대체. ([전문개정 YYYY. M. D.], [본조신설 YYYY. M. D.], <개정 YYYY. M. D.>)
+    pattern = r'\[전문개정 \d{4}\. \d{1,2}\. \d{1,2}\.\]'
+    text = re.sub(pattern, "", text)
+    pattern = r'\[본조신설 \d{4}\. \d{1,2}\. \d{1,2}\.\]'
+    text = re.sub(pattern, "", text)
+    pattern = r'\<개정 \d{4}\. \d{1,2}\. \d{1,2}\.\>'
+    text = re.sub(pattern, "", text)
+    
+    # LLM 이 알아볼수 있게 어떤 법령의 조문인지 prefix 를 붙여준다.
+    return f"{category} {text}"
+
+# 현재는 민법, 형법, 근로기준법 안에서만 검색하고 있다.
+def check_provisions(contents:str) -> list:
+    # 민법
+    provision_position_0_list = []
+    for text in re.finditer("민법", contents):
+        #print(text.start())
+        #print(text.end())
+        provision_position_0_list.append(text.end())    # 찾은 문자열 끝 바로 다음의 위치
+        
+    # 형법
+    provision_position_1_list = []
+    for text in re.finditer("형법", contents):        
+        provision_position_1_list.append(text.end())    # 찾은 문자열 끝 바로 다음의 위치
+        
+    # 근로기준법
+    provision_position_2_list = []
+    for text in re.finditer("근로기준법", contents):        
+        provision_position_2_list.append(text.end())    # 찾은 문자열 끝 바로 다음의 위치
+        
+    # 정규표현식 패턴
+    pattern = r"제\s*\d+\s*조"
+    check_range = 20
+    
+    # regex 로 범위내 조항이 있는지 체크해서 있다면 뽑는다.
+    # 민법
+    provision_names_0 = set()   # 중복 허용 안하려고
+    for start_pos in provision_position_0_list:
+        check_texts = contents[start_pos:start_pos+check_range]
+        matches = re.findall(pattern, check_texts)    # 패턴에 매칭되는 모든 문자열 찾기
+        if len(matches) > 0:
+            for found in matches:
+                found = found.replace(" ", "")
+                provision_names_0.add(found)
+            
+    # 형법
+    provision_names_1 = set()   # 중복 허용 안하려고
+    for start_pos in provision_position_1_list:
+        check_texts = contents[start_pos:start_pos+check_range]
+        matches = re.findall(pattern, check_texts)    # 패턴에 매칭되는 모든 문자열 찾기
+        if len(matches) > 0:
+            for found in matches:
+                found = found.replace(" ", "")
+                provision_names_1.add(found)
+            
+    # 근로기준법
+    provision_names_2 = set()   # 중복 허용 안하려고
+    for start_pos in provision_position_2_list:
+        check_texts = contents[start_pos:start_pos+check_range]
+        matches = re.findall(pattern, check_texts)    # 패턴에 매칭되는 모든 문자열 찾기
+        if len(matches) > 0:
+            for found in matches:
+                found = found.replace(" ", "")
+                provision_names_2.add(found)
+        
+    return [list(provision_names_0), list(provision_names_1), list(provision_names_2)]
+
+def process_provisions(contents:str, law_list:list):
+    # provision_index_list[0]:민법 조항리스트, [1]:형법, [2]:근로기준법
+    provision_index_list = check_provisions(contents)
+    
+    all_found_provisions = ""
+    for i, provision_indices in enumerate(provision_index_list):
+        if len(provision_indices) > 0:
+            for provision_index in provision_indices:
+                provision = search_provisions(law_list, i, provision_index)
+                all_found_provisions += (provision + "\n")
+    
+    return all_found_provisions, provision_index_list
 
 
 def format_docs(docs):

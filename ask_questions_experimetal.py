@@ -20,6 +20,7 @@ import datetime
 import gc
 #from memory_profiler import profile
 import asyncio  # 동시실행 제어를 통한 데이터 무결성을 유지하기 위해 lock 사용
+import pandas as pd
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
@@ -60,7 +61,7 @@ from GraphState import GraphState
 from langgraph.graph import END, StateGraph
 from langgraph.graph.graph import CompiledGraph
 from langgraph.checkpoint.memory import MemorySaver
-from utils import retriever_with_score, get_bm25_scores, get_bm25_scores_from_str_list, start_timer, format_docs, format_searched_docs, pretty_print, get_index_url, get_prompts_by_casetype
+from utils import retriever_with_score, get_bm25_scores, get_bm25_scores_from_str_list, start_timer, process_provisions, format_docs, format_searched_docs, pretty_print, get_index_url, get_prompts_by_casetype
 from operator import itemgetter
 import pprint
 from langgraph.errors import GraphRecursionError
@@ -71,6 +72,11 @@ PINECONE_INDEX_NAME = "search-precedents"
 # 현재 아래 2가지 점수 중 하나만 통과하면 관련성있는 것으로 판단한다.(VECTORDB_SCORE_CUTOFF 이하이거나 BM25_SCORE_CUTOFF 이상)
 VECTORDB_SCORE_CUTOFF = 1.0 #0.9
 BM25_SCORE_CUTOFF = 15.0
+
+# 법령
+PATH_CIVIL = "./laws/civil_20240517.csv"
+PATH_CRIMINAL = "./laws/criminal_20240209.csv"
+PATH_LABOR = "./laws/labor_20211119.csv"
 
 
 # LangGraph 구현 및 설명 참조: https://medium.com/@yoony1007/%EB%9E%AD%EC%B2%B4%EC%9D%B8-%EC%BD%94%EB%A6%AC%EC%95%84-%EB%B0%8B%EC%97%85-2024-q2-%ED%85%8C%EB%94%94%EB%85%B8%ED%8A%B8-%EC%B4%88%EB%B3%B4%EC%9E%90%EB%8F%84-%ED%95%A0-%EC%88%98-%EC%9E%88%EB%8A%94-%EA%B3%A0%EA%B8%89-rag-%EB%8B%A4%EC%A4%91-%EC%97%90%EC%9D%B4%EC%A0%84%ED%8A%B8%EC%99%80-langgraph-%EC%A0%9C%EC%9E%91-e8bec8adfef4
@@ -118,6 +124,12 @@ class AskQuestions:
         # 동시사용 제어
         self.lock_retreive = asyncio.Lock()
         self.lock_llm = asyncio.Lock()
+        
+        # 법령 데이터 프레임
+        self.list_law_df = []
+        self.list_law_df.append(pd.read_csv(PATH_CIVIL, encoding="UTF-8"))
+        self.list_law_df.append(pd.read_csv(PATH_CRIMINAL, encoding="UTF-8"))
+        self.list_law_df.append(pd.read_csv(PATH_LABOR, encoding="UTF-8"))
         
     
     # 사실 이함수는 의미가 없다. 프로그램 종료시 타이머를 종료시키기 위함이지만 timer.daemon = True 와 같이 데몬스레드로 설정하면 타이머는 프로그램과 생명을 같이한다.
@@ -407,6 +419,11 @@ class AskQuestions:
                 vectorDB_score = float(top_doc.metadata['score'])
                 bm25_score = float(top_doc.metadata['bm25_score'])
                 
+                # 법령문서에서 관련조문 검색
+                all_found_provisions, provision_index_list = process_provisions(top_doc.page_content, self.list_law_df)                
+                #print(f"merge_retrieved_all_document - provision_index_list: {provision_index_list}")
+                #print(f"merge_retrieved_all_document - all_found_provisions:\n{all_found_provisions}")
+                
                 etc_prec_numbers = []
                 for i in range(1, len(retrieved_docs)):
                     etc_prec_numbers.append(str(retrieved_docs[i].metadata['prec_no']))
@@ -491,8 +508,8 @@ class AskQuestions:
                         content_dict_2['case_no'] = piece
                         content_dict['case_no'] = piece
                         
-                    elif piece.find('참조조문:') != -1:
-                        content_dict_2['ref_article'] = piece
+                    elif piece.find('참조조문:') != -1:                        
+                        content_dict_2['ref_article'] = piece.replace(' / ', ', ')
                         content_dict['ref_article'] = piece
                         
                     elif piece.find('사건명:') != -1:
@@ -508,8 +525,9 @@ class AskQuestions:
                         content_dict['prec_content'] = piece
                         
                     #print(f"piece:\n{piece}\n")
-                    
-                context_doc = "\n".join([content_dict['case_name'], content_dict['case_no'], content_dict['summary'], content_dict['point'], content_dict['ref_article'], content_dict['prec_content']])
+                
+                context_doc = "\n".join([content_dict['case_name'], content_dict['case_no'], content_dict['summary'], content_dict['point'], content_dict['prec_content']])
+                context_doc = context_doc + "\n참조조문:" + all_found_provisions    # 법령문서에서 찾아낸 조문내용을 덧붙인다.
                 #print(f"** new context_doc: \n{context_doc}\n")
                 #print(f"** splited end **")
                 
@@ -653,12 +671,41 @@ class AskQuestions:
                 search_result = "\n".join(article_texts)
                 #print(f'tavily result-2: {search_result}')
                 
+                # 법령문서에서 관련조문 검색
+                all_found_provisions, provision_index_list = process_provisions(search_result, self.list_law_df)
+                search_result = search_result + "\n참조조문:" + all_found_provisions    # 법령문서에서 찾아낸 조문내용을 덧붙인다.
+                #print(f"search_on_web - provision_index_list: {provision_index_list}")
+                #print(f"search_on_web - all_found_provisions:\n{all_found_provisions}")
+                #print(f"search_result:\n{search_result}")
+                
+                content_dict_2 = {}
+                ref_article = ""
+                for i, provision_indices in enumerate(provision_index_list):
+                    if len(provision_indices) > 0:                    
+                        for provision_index in provision_indices:
+                            if i == 0:
+                                ref_article = ref_article + "민법 " + provision_index + ", "
+                            elif i == 1:
+                                ref_article = ref_article + "형법 " + provision_index + ", "
+                            elif i == 2:
+                                ref_article = ref_article + "근로기준법 " + provision_index + ", "
+                    
+                if ref_article != "":        
+                    ref_article = ref_article.strip()
+                    if ref_article[-1] == ",":
+                        ref_article = ref_article[:-1]
+                    
+                    content_dict_2['ref_article'] = "참조조문:" + ref_article
+                    
+                #print(f"search_on_web - content_dict_2: {content_dict_2}")
+                
             except Exception as e:
                 print(f'search_on_web - Exception: {e}')
                 search_result = ""
+                content_dict_2 = {}
             
-            return GraphState(context=search_result)
-        
+            return GraphState(context=search_result, vectordb_choice=content_dict_2)
+            
 
     # LLM을 사용하여 답변을 생성
     #@profile
@@ -787,6 +834,7 @@ class AskQuestions:
         workflow.add_edge("search_on_web", END)
         workflow.set_entry_point("search_on_web")
         '''
+        
 
         # Checkpointer: 각 노드간 실행결과 추적하기 위한 메모리(대화에 대한 기록과 유사 개념)
         # 체크포인터를 활용해 특정 시점(Snapshot)으로 되돌리기 기능도 가능
@@ -1636,4 +1684,4 @@ class AskQuestions:
         result_dict = {"answer":answer}
         
         return result_dict
-    
+
