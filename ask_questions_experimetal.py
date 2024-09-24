@@ -421,8 +421,8 @@ class AskQuestions:
                 
                 # 법령문서에서 관련조문 검색
                 all_found_provisions, provision_index_list = process_provisions(top_doc.page_content, self.list_law_df)                
-                #print(f"merge_retrieved_all_document - provision_index_list: {provision_index_list}")
-                #print(f"merge_retrieved_all_document - all_found_provisions:\n{all_found_provisions}")
+                print(f"merge_retrieved_all_document - provision_index_list: {provision_index_list}")
+                print(f"merge_retrieved_all_document - all_found_provisions:\n{all_found_provisions}")
                 
                 etc_prec_numbers = []
                 for i in range(1, len(retrieved_docs)):
@@ -528,7 +528,7 @@ class AskQuestions:
                 
                 context_doc = "\n".join([content_dict['case_name'], content_dict['case_no'], content_dict['summary'], content_dict['point'], content_dict['prec_content']])
                 context_doc = context_doc + "\n참조조문:" + all_found_provisions    # 법령문서에서 찾아낸 조문내용을 덧붙인다.
-                #print(f"** new context_doc: \n{context_doc}\n")
+                print(f"** new context_doc: \n{context_doc}\n")
                 #print(f"** splited end **")
                 
                 # 1순위는 본문 전체를, 2/3순위는 판례일련번호만 넘긴다
@@ -674,9 +674,9 @@ class AskQuestions:
                 # 법령문서에서 관련조문 검색
                 all_found_provisions, provision_index_list = process_provisions(search_result, self.list_law_df)
                 search_result = search_result + "\n참조조문:" + all_found_provisions    # 법령문서에서 찾아낸 조문내용을 덧붙인다.
-                #print(f"search_on_web - provision_index_list: {provision_index_list}")
-                #print(f"search_on_web - all_found_provisions:\n{all_found_provisions}")
-                #print(f"search_result:\n{search_result}")
+                print(f"search_on_web - provision_index_list: {provision_index_list}")
+                print(f"search_on_web - all_found_provisions:\n{all_found_provisions}")
+                print(f"search_result:\n{search_result}")
                 
                 content_dict_2 = {}
                 ref_article = ""
@@ -697,7 +697,7 @@ class AskQuestions:
                     
                     content_dict_2['ref_article'] = "참조조문:" + ref_article
                     
-                #print(f"search_on_web - content_dict_2: {content_dict_2}")
+                print(f"search_on_web - content_dict_2: {content_dict_2}")
                 
             except Exception as e:
                 print(f'search_on_web - Exception: {e}')
