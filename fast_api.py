@@ -124,9 +124,11 @@ FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브�
 #"http://localhost:8000",
 #"http://localhost:8501",
 #"https://port-0-law-info-2-back-m0knpf18d31f2384.sel4.cloudtype.app",
+#"http://law-info-2-back:8379",
+#"https://law-info-2-back:8379",
 origins = [
-    "http://law-info-2-back:8379",
-    "https://law-info-2-back:8379",
+    "http://with-legal-documents.streamlit.app",
+    "https://with-legal-documents.streamlit.app",
 ]
 
 app.add_middleware(
