@@ -6,8 +6,7 @@ fastapi 는 pip install 로 설치해줘야 하고
 # backend 를 FastAPI 로 구현
 
 from fastapi import FastAPI, HTTPException
-#from fastapi.middleware.cors import CORSMiddleware      # 보안을 위해 CORS 설정을 해줘야 한다.
-from starlette.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware      # 보안을 위해 CORS 설정을 해줘야 한다.
 from pydantic import BaseModel
 from receive_questions import RecvQuestions
 import json
@@ -128,7 +127,7 @@ FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브�
 #"http://law-info-2-back:8379",
 #"https://law-info-2-back:8379",
 origins = [
-    "https://with-legal-documents.streamlit.app/"
+    "https://with-legal-documents.streamlit.app",
 ]
 
 app.add_middleware(
