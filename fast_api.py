@@ -6,7 +6,8 @@ fastapi 는 pip install 로 설치해줘야 하고
 # backend 를 FastAPI 로 구현
 
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware      # 보안을 위해 CORS 설정을 해줘야 한다.
+#from fastapi.middleware.cors import CORSMiddleware      # 보안을 위해 CORS 설정을 해줘야 한다.
+from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from receive_questions import RecvQuestions
 import json
@@ -127,14 +128,13 @@ FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브�
 #"http://law-info-2-back:8379",
 #"https://law-info-2-back:8379",
 origins = [
-    "http://with-legal-documents.streamlit.app",
     "https://with-legal-documents.streamlit.app",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,      # 교차-출처 요청을 보낼 수 있는 출처의 리스트. 모든 출처를 허용하기 위해 ['*'] 를 사용할 수 있다.
-    allow_credentials=False,     # 교차-출처 요청시 쿠키 지원 여부를 설정. 기본값은 False. 또한 해당 항목을 허용할 경우 allow_origins 는 ['*'] 로 설정할 수 없으며, 출처를 반드시 특정한다. 
+    allow_credentials=True,     # 교차-출처 요청시 쿠키 지원 여부를 설정. 기본값은 False. 또한 해당 항목을 허용할 경우 allow_origins 는 ['*'] 로 설정할 수 없으며, 출처를 반드시 특정한다. 
     allow_methods=["*"],        # 교차-출처 요청을 허용하는 HTTP 메소드의 리스트. 기본값은 ['GET'] 이다. ['*'] 을 사용하여 모든 표준 메소드들을 허용할 수 있다.
     allow_headers=["*"],        # 교차-출처를 지원하는 HTTP 요청 헤더의 리스트. 기본값은 [] 이다. 모든 헤더들을 허용하기 위해 ['*'] 를 사용할 수 있다. Accept, Accept-Language, Content-Language 그리고 Content-Type 헤더는 CORS 요청시 언제나 허용된다.
 )
