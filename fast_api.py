@@ -6,13 +6,16 @@ fastapi 는 pip install 로 설치해줘야 하고
 # backend 를 FastAPI 로 구현
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware      # 보안을 위해 CORS 설정을 해줘야 한다.
 from pydantic import BaseModel
 from receive_questions import RecvQuestions
 import json
+import logging
 
 import atexit   # 프로그램 종료시 호출을 위해
 #import signal
 #import sys
+
 
 '''
 POST 메세지를 받을 클래스. FastAPI 에서는 이걸 model 이라고 부른다.
@@ -98,8 +101,41 @@ class User_inputs_paper_6(BaseModel):
     add_info : str
 
 
+logging.basicConfig(level=logging.INFO)
+
+
 # FastAPI instance
 app = FastAPI()
+
+
+#-- CORS(Cross-Origin Resource Sharing, 교차-출처) 설정 ----------------
+""" 
+`origins` 리스트에 명시된 도메인에서만 API에 접근할 수 있도록 설정한다.
+또한, 세션을 사용하여 특정 사용자만 접근할 수 있도록 할 수도 있다. 
+FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브러리를 사용할 수 있다. 
+세션을 통해 사용자가 로그인했는지 확인하고, 로그인하지 않은 사용자는 접근할 수 없도록 할 수 있다.
+
+참고: https://fastapi.tiangolo.com/ko/tutorial/cors/#corsmiddleware
+"""
+# 허용할 도메인 리스트
+#"https://with-legal-documents.streamlit.app",
+#"http://localhost",
+#"http://localhost:8000",
+#"http://localhost:8501",
+origins = [
+    "http://with-legal-documents.streamlit.app",
+    "https://with-legal-documents.streamlit.app",  
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,      # 교차-출처 요청을 보낼 수 있는 출처의 리스트. 모든 출처를 허용하기 위해 ['*'] 를 사용할 수 있다.
+    allow_credentials=True,     # 교차-출처 요청시 쿠키 지원 여부를 설정. 기본값은 False. 또한 해당 항목을 허용할 경우 allow_origins 는 ['*'] 로 설정할 수 없으며, 출처를 반드시 특정한다. 
+    allow_methods=["*"],        # 교차-출처 요청을 허용하는 HTTP 메소드의 리스트. 기본값은 ['GET'] 이다. ['*'] 을 사용하여 모든 표준 메소드들을 허용할 수 있다.
+    allow_headers=["*"],        # 교차-출처를 지원하는 HTTP 요청 헤더의 리스트. 기본값은 [] 이다. 모든 헤더들을 허용하기 위해 ['*'] 를 사용할 수 있다. Accept, Accept-Language, Content-Language 그리고 Content-Type 헤더는 CORS 요청시 언제나 허용된다.
+)
+#---------------- CORS 설정 --
+
 
 # backend main code 로 frontend 의 입력을 전달할 receiver
 receiver = RecvQuestions()
@@ -131,11 +167,14 @@ FastAPI instance 로 REST API 를 정의 한다.
 def operate():
     try:
         if receiver != None:
+            logging.info("Receiver is initialized")
             return True
         else:
+            logging.info("Receiver is not initialized")
             return False
     
     except Exception as e:
+        #logging.error(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
