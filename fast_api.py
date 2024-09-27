@@ -10,11 +10,16 @@ from fastapi.middleware.cors import CORSMiddleware      # 보안을 위해 CORS 
 from pydantic import BaseModel
 from receive_questions import RecvQuestions
 import json
-#import logging
+import logging
 
 import atexit   # 프로그램 종료시 호출을 위해
 #import signal
 #import sys
+
+
+# 설정 로깅
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 '''
@@ -101,8 +106,6 @@ class User_inputs_paper_6(BaseModel):
     add_info : str
 
 
-#logging.basicConfig(level=logging.INFO)
-
 # FastAPI instance
 app = FastAPI()
 
@@ -124,6 +127,9 @@ FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브�
 origins = [
     "https://with-legal-documents.streamlit.app",
 ]
+
+# 로깅 추가
+logger.info("CORS Origins: %s", origins)
 
 app.add_middleware(
     CORSMiddleware,
@@ -172,7 +178,7 @@ def operate():
             return False
     
     except Exception as e:
-        #logging.error(f"Error: {str(e)}")
+        logging.error(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
