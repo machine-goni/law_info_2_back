@@ -128,7 +128,7 @@ FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브�
 #"http://law-info-2-back:8379",
 #"https://law-info-2-back:8379",
 origins = [
-    "https://with-legal-documents.streamlit.app",
+    "https://with-legal-documents.streamlit.app/"
 ]
 
 app.add_middleware(
