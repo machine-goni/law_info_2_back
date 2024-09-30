@@ -638,35 +638,38 @@ class AskQuestions:
             # tavily search 의 무료 이용량은 1000건/월 이다. 이용량이 모두 소진되는 등의 문제가 발행하면 LLM 단계로 직행.
             try:
                 tavily_result = tavily_tool.invoke({"query": state["question"]})
-                #search_result = format_searched_docs(tavily_result)
                 #print(f'tavily result-1: {tavily_result}')
-                #print(f'tavily result-2: {search_result}')
                 
                 # newpaper article
                 max_article_len = 2000
                 article_texts = []
                 for i, doc in enumerate(tavily_result):
-                    article = Article(doc["url"])
-                    article.download()
-                    article.parse()
-                    new_article = f"{doc['content']}. {article.text}"
-                    new_article_2 = None
-                    if len(new_article) > max_article_len:
-                        new_article_2 = new_article[:max_article_len]
-                    else:
-                        new_article_2 = new_article
+                    # 여기에서 다시 예외처리를 넣은 이유는 article.download() 에서 접근이 안되는 사이트는 exception 이 나버리기 때문이다. for loop 을 유지하기 위해 try 를 한번 더 넣는다.
+                    try:
+                        article = Article(doc["url"])
+                        article.download()
+                        article.parse()
+                        new_article = f"{doc['content']}. {article.text}"
+                        new_article_2 = None
+                        if len(new_article) > max_article_len:
+                            new_article_2 = new_article[:max_article_len]
+                        else:
+                            new_article_2 = new_article
+                            
+                        #print(f"\n\nnew_article_2[{i}]:\n{new_article_2}")
+                        # 이 부분은 검색된 내용에 A씨, B씨 등과 같이 구체적인 상황 예의 언급을 피하기 위해 넣는다.
+                        # 알파벳 A 나 B가 사람을 지칭하지 않고 들어 갈수도 있기 때문에 A와 B가 함께 들어간 경우만 걸러낸다.
+                        # 프롬프트로 언급을 피하도록 하려고 했으나 GPT 가 알려준 프롬프트로도 해결되지가 않아서 이렇게 처리.
+                        if not (("A" in new_article_2) and ("B" in new_article_2)):                        
+                            article_texts.append(new_article_2)                    
+                            #print(f"added index: {i}, Total: {len(article_texts)}")
+                            
+                        # 위에서 걸러질 수도 있는 상황을 대비해서 필요한것보다 좀더 검색했기 때문에 필요한만큼 모아지면 끝낸다.
+                        if len(article_texts) >= tavily_max_result_2:
+                            break
                         
-                    #print(f"\n\nnew_article_2[{i}]:\n{new_article_2}")
-                    # 이 부분은 검색된 내용에 A씨, B씨 등과 같이 구체적인 상황 예의 언급을 피하기 위해 넣는다.
-                    # 알파벳 A 나 B가 사람을 지칭하지 않고 들어 갈수도 있기 때문에 A와 B가 함께 들어간 경우만 걸러낸다.
-                    # 프롬프트로 언급을 피하도록 하려고 했으나 GPT 가 알려준 프롬프트로도 해결되지가 않아서 이렇게 처리.
-                    if not (("A" in new_article_2) and ("B" in new_article_2)):                        
-                        article_texts.append(new_article_2)                    
-                        #print(f"added index: {i}, Total: {len(article_texts)}")
-                        
-                    # 위에서 걸러질 수도 있는 상황을 대비해서 필요한것보다 좀더 검색했기 때문에 필요한만큼 모아지면 끝낸다.
-                    if len(article_texts) >= tavily_max_result_2:
-                        break
+                    except Exception as e:
+                        print(f'search_on_web - for loop - Exception: {e}')
                 
                 search_result = "\n".join(article_texts)
                 #print(f'tavily result-2: {search_result}')

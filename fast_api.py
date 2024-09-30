@@ -6,11 +6,13 @@ fastapi 는 pip install 로 설치해줘야 하고
 # backend 를 FastAPI 로 구현
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware      # 보안을 위해 CORS 설정을 해줘야 한다.
+#from fastapi import Request                            # 들어오는 request 의 origin 을 확인해보고 싶으면 Request 를 import 해주면 된다.
 from pydantic import BaseModel
 from receive_questions import RecvQuestions
-import json
-import logging
+#import json
+#import logging
 
 import atexit   # 프로그램 종료시 호출을 위해
 #import signal
@@ -18,8 +20,8 @@ import atexit   # 프로그램 종료시 호출을 위해
 
 
 # 설정 로깅
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+#logging.basicConfig(level=logging.INFO)
+#logger = logging.getLogger(__name__)
 
 
 '''
@@ -110,9 +112,13 @@ class User_inputs_paper_6(BaseModel):
 app = FastAPI()
 
 
-#-- CORS(Cross-Origin Resource Sharing, 교차-출처) 설정 ----------------
+#-- CORS(Cross-Origin Resource Sharing, 교차-출처 리소스 공유) 설정 ----------------
+
 """ 
-`origins` 리스트에 명시된 도메인에서만 API에 접근할 수 있도록 설정한다.
+`origins` 리스트에 명시된 도메인에서만 API에 접근할 수 있도록 설정한다. (origins 의 도메인 체크는 붙어오는 hearder로 
+확인하는 것인데 보통 브라우저에서 도메인을 hearder 에 붙여주지만 streamlit 은 그게 안붙어온다. 그래서 streamlit 으로 
+백날 CORS 테스트해봐야 프리패스라는 결과에 직면할 것이다. 괜히 streamlit 으로 테스트 한다고 힘빼지 말자. 굳이 streamlit 으로 
+테스트해보고 싶다면 request 보낼때 hearder origin 에 도메인을 넣어서 보내주면 된다. 하지만 실서비스에서는 보안상 당연히 하지 말아야 한다)
 또한, 세션을 사용하여 특정 사용자만 접근할 수 있도록 할 수도 있다. 
 FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브러리를 사용할 수 있다. 
 세션을 통해 사용자가 로그인했는지 확인하고, 로그인하지 않은 사용자는 접근할 수 없도록 할 수 있다.
@@ -120,16 +126,12 @@ FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브�
 참고: https://fastapi.tiangolo.com/ko/tutorial/cors/#corsmiddleware
 """
 # 허용할 도메인 리스트
-#"http://with-legal-documents.streamlit.app",
-#"https://with-legal-documents.streamlit.app",
-#"http://localhost",
-#"http://localhost:8501",
+# 테스트시 주의할 점은 백/프론트, 브라우져까지 완전히 다시 껏다 켜야 제대로 확인할 수 있다. 그러지 않을 경우 차단되야할때 안되고 안되야할때 되는 경우가 있다.
 origins = [
-    "https://with-legal-documents.streamlit.app",
+    #"*",
+    #"http://localhost:8000",
+    "http://localhost:8501",
 ]
-
-# 로깅 추가
-logger.info("CORS Origins: %s", origins)
 
 app.add_middleware(
     CORSMiddleware,
@@ -138,7 +140,8 @@ app.add_middleware(
     allow_methods=["*"],        # 교차-출처 요청을 허용하는 HTTP 메소드의 리스트. 기본값은 ['GET'] 이다. ['*'] 을 사용하여 모든 표준 메소드들을 허용할 수 있다.
     allow_headers=["*"],        # 교차-출처를 지원하는 HTTP 요청 헤더의 리스트. 기본값은 [] 이다. 모든 헤더들을 허용하기 위해 ['*'] 를 사용할 수 있다. Accept, Accept-Language, Content-Language 그리고 Content-Type 헤더는 CORS 요청시 언제나 허용된다.
 )
-#---------------- CORS 설정 --
+
+#-------------------------------------------------------------------- CORS 설정 --
 
 
 # backend main code 로 frontend 의 입력을 전달할 receiver
@@ -178,19 +181,25 @@ def operate():
             return False
     
     except Exception as e:
-        logging.error(f"Error: {str(e)}")
+        #logging.error(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # 판례검색과 질문
 @app.post("/question")
 async def operate(input:User_inputs):
+#async def operate(request: Request, input:User_inputs):
     try:
+        # request: Request 를 받아 아래처럼 origin 을 확인해 볼 수 있다. request 는 프론트엔드에서 따로 파라메터를 넣어줄 필요는 없다.
+        #origin = request.headers.get("origin")
+        #print(f"/question - origin: {origin}")
+        
         result = await receiver.question(input.question, input.case_type)
         #print(f"/question - {input.question}: \n{result}")
         
-        # 보내기 직전에 json 으로 변환시킨다
-        return json.dumps(result)
+        # 보내기 직전에 json 으로 변환시킨다. json.dumps 대신 JSONResponse 를 사용하면 알아서 맞는 인코딩을 적용해 준다고 한다.
+        #return json.dumps(result)
+        return JSONResponse(content=result)
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -204,7 +213,8 @@ async def operate(input:User_inputs_advice):
         #print(f"/advice - {input.question}: \n{result}")
         
         # 보내기 직전에 json 으로 변환시킨다
-        return json.dumps(result)
+        #return json.dumps(result)
+        return JSONResponse(content=result)
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -217,7 +227,8 @@ async def operate(input:User_inputs_paper_1):
         result = await receiver.write_paper_1(input.reason, input.fact, input.ask, input.point, input.receiver, input.sender, input.phone, input.appendix, input.style)
         
         # 보내기 직전에 json 으로 변환시킨다
-        return json.dumps(result)
+        #return json.dumps(result)
+        return JSONResponse(content=result)
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -233,7 +244,8 @@ async def operate(input:User_inputs_paper_2):
             input.ask_reason, input.ask_reason_detail, input.appendix)
         
         # 보내기 직전에 json 으로 변환시킨다
-        return json.dumps(result)
+        #return json.dumps(result)
+        return JSONResponse(content=result)
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -248,7 +260,8 @@ async def operate(input:User_inputs_paper_4):
             input.rebut, input.appendix, input.add_info)
         
         # 보내기 직전에 json 으로 변환시킨다
-        return json.dumps(result)
+        #return json.dumps(result)
+        return JSONResponse(content=result)
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -263,7 +276,8 @@ async def operate(input:User_inputs_paper_5):
             input.etc_accuse, input.station, input.add_info)
         
         # 보내기 직전에 json 으로 변환시킨다
-        return json.dumps(result)
+        #return json.dumps(result)
+        return JSONResponse(content=result)
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -278,7 +292,8 @@ async def operate(input:User_inputs_paper_6):
             input.court, input.add_info)
         
         # 보내기 직전에 json 으로 변환시킨다
-        return json.dumps(result)
+        #return json.dumps(result)
+        return JSONResponse(content=result)
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
