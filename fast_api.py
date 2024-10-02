@@ -8,7 +8,7 @@ fastapi 는 pip install 로 설치해줘야 하고
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware      # 보안을 위해 CORS 설정을 해줘야 한다.
-#from fastapi import Request                            # 들어오는 request 의 origin 을 확인해보고 싶으면 Request 를 import 해주면 된다.
+from fastapi import Request                            # 들어오는 request 의 origin 을 확인해보고 싶으면 Request 를 import 해주면 된다.
 from pydantic import BaseModel
 from receive_questions import RecvQuestions
 #import json
@@ -129,8 +129,8 @@ FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브�
 # 테스트시 주의할 점은 백/프론트, 브라우져까지 완전히 다시 껏다 켜야 제대로 확인할 수 있다. 그러지 않을 경우 차단되야할때 안되고 안되야할때 되는 경우가 있다.
 origins = [
     #"*",
-    #"http://localhost:8000",
-    "http://localhost:8501",
+    #"http://localhost:8501",
+    "http://localhost:8500",
 ]
 
 app.add_middleware(
@@ -140,6 +140,22 @@ app.add_middleware(
     allow_methods=["*"],        # 교차-출처 요청을 허용하는 HTTP 메소드의 리스트. 기본값은 ['GET'] 이다. ['*'] 을 사용하여 모든 표준 메소드들을 허용할 수 있다.
     allow_headers=["*"],        # 교차-출처를 지원하는 HTTP 요청 헤더의 리스트. 기본값은 [] 이다. 모든 헤더들을 허용하기 위해 ['*'] 를 사용할 수 있다. Accept, Accept-Language, Content-Language 그리고 Content-Type 헤더는 CORS 요청시 언제나 허용된다.
 )
+
+# 위의 CORS 설정에 추가하여 허용 origin 이 아니라면 exception 을 내도록 코드 추가
+# 추가하는 이유는 CORS 에 의해 막힌다 해도 이는 브라우저 측에서 막는 것이기 때문에 서버 내부 프로세스는 수행이 된다.
+# 그래서 막힌 요청에 대해서는 프로세스가 중단되도록 하기 위함이다.
+@app.middleware("http")
+async def check_origin(request: Request, call_next):
+    origin = request.headers.get("origin")
+
+    # 요청 헤더의 Origin이 허용된 origins 목록에 없으면 403 오류 발생
+    if origin not in origins:
+        # `HTTPException`이 발생하면 해당 요청에 대한 처리가 중단되지만, 서버 자체는 정상적으로 동작하며 다른 요청을 계속 처리할 수 있다. 
+        # 그렇기 때문에 HTTPException 대해 `try`/`except` 블록으로 감싸줄 필요는 없다.
+        raise HTTPException(status_code=403)
+
+    response = await call_next(request)
+    return response
 
 #-------------------------------------------------------------------- CORS 설정 --
 
@@ -171,7 +187,7 @@ FastAPI instance 로 REST API 를 정의 한다.
 '''
 
 @app.post("/init")
-def operate():
+async def operate():
     try:
         if receiver != None:
             #logging.info("Receiver is initialized")
