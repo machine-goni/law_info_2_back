@@ -130,7 +130,7 @@ FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브�
 origins = [
     #"*",
     #"http://localhost:8501",
-    "http://localhost:8500",
+    "http://127.0.0.1:5500",
 ]
 
 app.add_middleware(
@@ -147,6 +147,7 @@ app.add_middleware(
 @app.middleware("http")
 async def check_origin(request: Request, call_next):
     origin = request.headers.get("origin")
+    #print(f"origin: {origin}")
 
     # 요청 헤더의 Origin이 허용된 origins 목록에 없으면 403 오류 발생
     if origin not in origins:
