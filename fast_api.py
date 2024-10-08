@@ -129,7 +129,6 @@ FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브�
 # 테스트시 주의할 점은 백/프론트, 브라우져까지 완전히 다시 껏다 켜야 제대로 확인할 수 있다. 그러지 않을 경우 차단되야할때 안되고 안되야할때 되는 경우가 있다.
 origins = [
     #"*",
-    #"http://localhost:8501",
     "http://127.0.0.1:5500",
 ]
 
@@ -150,7 +149,7 @@ async def check_origin(request: Request, call_next):
     #print(f"origin: {origin}")
 
     # 요청 헤더의 Origin이 허용된 origins 목록에 없으면 403 오류 발생
-    if origin not in origins:
+    if (origin not in origins) and ("*" not in origins):
         # `HTTPException`이 발생하면 해당 요청에 대한 처리가 중단되지만, 서버 자체는 정상적으로 동작하며 다른 요청을 계속 처리할 수 있다. 
         # 그렇기 때문에 HTTPException 대해 `try`/`except` 블록으로 감싸줄 필요는 없다.
         raise HTTPException(status_code=403)
