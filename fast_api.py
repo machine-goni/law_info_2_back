@@ -128,8 +128,8 @@ FastAPI에서 세션을 사용하려면 `fastapi_sessions`와 같은 라이브�
 # 허용할 도메인 리스트
 # 테스트시 주의할 점은 백/프론트, 브라우져까지 완전히 다시 껏다 켜야 제대로 확인할 수 있다. 그러지 않을 경우 차단되야할때 안되고 안되야할때 되는 경우가 있다.
 origins = [
-    "*",
-    #"https://legal-advice-with-ai.pages.dev",
+    #"*",
+    "https://legal-with-ai.pages.dev",
     #"http://127.0.0.1:5500",
 ]
 
