@@ -55,6 +55,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 
 # 웹서치 크롤링을 통한 컨텐츠를 파싱해서 사용
 from newspaper import Article
+import nltk     # newspaper3k 는 없어도 되지만 newspaper4k 를 사용하려면 써야 한다.
 
 # langgraph 구조에 필요한 패키지들
 from GraphState import GraphState
@@ -130,6 +131,9 @@ class AskQuestions:
         self.list_law_df.append(pd.read_csv(PATH_CIVIL, encoding="UTF-8"))
         self.list_law_df.append(pd.read_csv(PATH_CRIMINAL, encoding="UTF-8"))
         self.list_law_df.append(pd.read_csv(PATH_LABOR, encoding="UTF-8"))
+        
+        # 필요한 NLTK(Natural Language Toolkit) 데이터 다운로드. newspaper4k 를 사용하려면 써야 한다.
+        nltk.download('punkt')
         
     
     # 사실 이함수는 의미가 없다. 프로그램 종료시 타이머를 종료시키기 위함이지만 timer.daemon = True 와 같이 데몬스레드로 설정하면 타이머는 프로그램과 생명을 같이한다.
@@ -308,7 +312,7 @@ class AskQuestions:
             # 나중에 relevance_check 노드가 있지만 수정을 하면서 구조는 그대로 두려고 여기서 점수체크를 하고 범위 밖이면 그냥 빈 리스트를 보낸다.
             for doc in dense_retrieved_docs:                        
                 if str(doc.metadata['chunk_index']) == selected_index:
-                    #print(f'selected_index - index:{selected_index}, vector db score:{doc.metadata["score"]}, bm25 score:{doc.metadata["bm25_score"]}\n')
+                    print(f'selected_index - index:{selected_index}, vector db score:{doc.metadata["score"]}, bm25 score:{doc.metadata["bm25_score"]}\n')
                     if doc.metadata['score'] <= VECTORDB_SCORE_CUTOFF or doc.metadata['bm25_score'] > BM25_SCORE_CUTOFF:
                         retrieved_doc_list.append(doc)                        
                         
@@ -656,6 +660,7 @@ class AskQuestions:
                         else:
                             new_article_2 = new_article
                             
+                        #print(f"검색된 URL[{i}]: {doc['url']}")    
                         #print(f"\n\nnew_article_2[{i}]:\n{new_article_2}")
                         # 이 부분은 검색된 내용에 A씨, B씨 등과 같이 구체적인 상황 예의 언급을 피하기 위해 넣는다.
                         # 알파벳 A 나 B가 사람을 지칭하지 않고 들어 갈수도 있기 때문에 A와 B가 함께 들어간 경우만 걸러낸다.
@@ -663,6 +668,7 @@ class AskQuestions:
                         if not (("A" in new_article_2) and ("B" in new_article_2)):                        
                             article_texts.append(new_article_2)                    
                             #print(f"added index: {i}, Total: {len(article_texts)}")
+                            #print(f"added index: {i} - article.text: {article.text}")
                             
                         # 위에서 걸러질 수도 있는 상황을 대비해서 필요한것보다 좀더 검색했기 때문에 필요한만큼 모아지면 끝낸다.
                         if len(article_texts) >= tavily_max_result_2:
