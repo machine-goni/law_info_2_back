@@ -78,6 +78,7 @@ BM25_SCORE_CUTOFF = 15.0
 PATH_CIVIL = "./laws/civil_20240517.csv"
 PATH_CRIMINAL = "./laws/criminal_20240209.csv"
 PATH_LABOR = "./laws/labor_20211119.csv"
+PATH_AGED = "./laws/aged_20241101.csv"
 
 
 # LangGraph 구현 및 설명 참조: https://medium.com/@yoony1007/%EB%9E%AD%EC%B2%B4%EC%9D%B8-%EC%BD%94%EB%A6%AC%EC%95%84-%EB%B0%8B%EC%97%85-2024-q2-%ED%85%8C%EB%94%94%EB%85%B8%ED%8A%B8-%EC%B4%88%EB%B3%B4%EC%9E%90%EB%8F%84-%ED%95%A0-%EC%88%98-%EC%9E%88%EB%8A%94-%EA%B3%A0%EA%B8%89-rag-%EB%8B%A4%EC%A4%91-%EC%97%90%EC%9D%B4%EC%A0%84%ED%8A%B8%EC%99%80-langgraph-%EC%A0%9C%EC%9E%91-e8bec8adfef4
@@ -131,6 +132,7 @@ class AskQuestions:
         self.list_law_df.append(pd.read_csv(PATH_CIVIL, encoding="UTF-8"))
         self.list_law_df.append(pd.read_csv(PATH_CRIMINAL, encoding="UTF-8"))
         self.list_law_df.append(pd.read_csv(PATH_LABOR, encoding="UTF-8"))
+        self.list_law_df.append(pd.read_csv(PATH_AGED, encoding="UTF-8"))
         
         # 필요한 NLTK(Natural Language Toolkit) 데이터 다운로드. newspaper4k 를 사용하려면 써야 한다.
         nltk.download('punkt')
@@ -647,6 +649,7 @@ class AskQuestions:
                 # newpaper article
                 max_article_len = 2000
                 article_texts = []
+                
                 for i, doc in enumerate(tavily_result):
                     # 여기에서 다시 예외처리를 넣은 이유는 article.download() 에서 접근이 안되는 사이트는 exception 이 나버리기 때문이다. for loop 을 유지하기 위해 try 를 한번 더 넣는다.
                     try:
@@ -655,10 +658,11 @@ class AskQuestions:
                         article.parse()
                         new_article = f"{doc['content']}. {article.text}"
                         new_article_2 = None
+                        
                         if len(new_article) > max_article_len:
-                            new_article_2 = new_article[:max_article_len]
+                            new_article_2 = new_article[:max_article_len]                            
                         else:
-                            new_article_2 = new_article
+                            new_article_2 = new_article                            
                             
                         #print(f"검색된 URL[{i}]: {doc['url']}")    
                         #print(f"\n\nnew_article_2[{i}]:\n{new_article_2}")
@@ -698,6 +702,8 @@ class AskQuestions:
                                 ref_article = ref_article + "형법 " + provision_index + ", "
                             elif i == 2:
                                 ref_article = ref_article + "근로기준법 " + provision_index + ", "
+                            elif i == 3:
+                                ref_article = ref_article + "노인복지법 " + provision_index + ", "
                     
                 if ref_article != "":        
                     ref_article = ref_article.strip()
